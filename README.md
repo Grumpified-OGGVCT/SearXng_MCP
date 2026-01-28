@@ -9,20 +9,31 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 [![MCP](https://img.shields.io/badge/MCP-2.0-green.svg)](https://modelcontextprotocol.io)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-orange.svg)](https://github.com/jlowin/fastmcp)
 
-> **Quick Start:** `python setup.py` (interactive wizard) or `./install.sh` (Unix) / `install.bat` (Windows)  
+> **Quick Start:** `python wizard.py` (interactive wizard) or `./install.sh` (Unix) / `install.bat` (Windows)  
 > **Dashboard:** `python -m searxng_mcp.dashboard` (http://localhost:8765)  
-> **Full Guide:** [INSTALL.md](INSTALL.md) | **Dashboard Guide:** [DASHBOARD.md](DASHBOARD.md)
+> **Agent Guide:** [MCP_AGENT_GUIDE.md](MCP_AGENT_GUIDE.md) | **Full Guide:** [INSTALL.md](INSTALL.md) | **Dashboard:** [DASHBOARD.md](DASHBOARD.md)
 
 ## Features
 
-- 🧙 **Interactive Setup Wizard**: Guided terminal wizard for easy configuration
-- 🎨 **Professional Web Dashboard**: Real-time monitoring with dark theme
-- 🌐 **Multi-Instance Resilience**: Automatic fallback across public SearXNG instances with optional local instance support
-- 🍪 **Preference Persistence**: Cookie-based session management to maintain user preferences across searches
+### Core Search
+- 🌐 **Multi-Instance Resilience**: Automatic fallover across public SearXNG instances with optional local instance support
 - 🌍 **Global Reach**: Support for 245+ engines including regional and non-English engines (Baidu, Yandex, Naver, etc.)
 - 🎯 **Advanced Search**: Bang syntax (!go, !gh), language modifiers (:en, :zh), and 10 specialized categories
-- 🏥 **Health Monitoring**: CLI tool and API for instance health checking
+- 🍪 **Preference Persistence**: Cookie-based session management to maintain user preferences across searches
 - 🔒 **Privacy-Focused**: No tracking, respects SearXNG's privacy principles and MCP security guidelines
+
+### AI Enhancement (Optional)
+- 🤖 **AI-Powered Summarization**: Get intelligent summaries of search results
+- 💡 **Key Insights Extraction**: Automatic extraction of important findings
+- 📚 **Source Recommendations**: AI-curated top sources with explanations
+- 🔄 **Multi-Provider Support**: OpenRouter (Mistral Large 2512), Ollama Cloud (Mistral Large 3), Google Gemini
+- 🎯 **Auto-Update**: Gemini Flash model auto-detects latest version
+
+### Tools & Monitoring
+- 🧙 **Interactive Setup Wizard**: Guided terminal wizard for easy configuration (`python wizard.py`)
+- 🎨 **Professional Web Dashboard**: Real-time monitoring with dark theme (http://localhost:8765)
+- 🏥 **Health Check Tool**: CLI tool for instance health checking and diagnostics
+- 📊 **Real-Time Monitoring**: WebSocket-based live instance health tracking
 - ⚡ **FastMCP Integration**: Built with FastMCP for automatic schema generation and transport flexibility
 
 ## Search Categories & Engines
@@ -370,6 +381,9 @@ search(query="AI news", categories="news", time_range="week")
 # Using bang syntax
 search(query="fastapi docs !gh")  # Search GitHub
 search(query="quantum computing :de")  # Search in German
+
+# AI-enhanced search (requires configuration)
+search(query="quantum computing implications", ai_enhance=True)
 ```
 
 **Parameters:**
@@ -380,6 +394,7 @@ search(query="quantum computing :de")  # Search in German
 - `time_range`: Filter by time (day, week, month, year)
 - `safesearch`: Safe search level (0=off, 1=moderate, 2=strict)
 - `page`: Results page number (default: 1)
+- `ai_enhance`: Enable AI-powered summarization (default: False, requires AI provider configuration)
 
 #### 2. `list_categories` - List available categories
 
@@ -394,6 +409,133 @@ list_categories()
 get_instances()
 # Returns: List of online instances, local instance, and timeout settings
 ```
+
+## AI Enhancement (Optional)
+
+Enable intelligent summarization and insights extraction using state-of-the-art language models.
+
+### Supported Providers
+
+#### 1. OpenRouter - Mistral Large 2512
+
+**Setup:**
+```bash
+export SEARXNG_AI_PROVIDER=openrouter
+export SEARXNG_AI_API_KEY=your_openrouter_api_key
+# Model is auto-set to: mistralai/mistral-large-2512
+```
+
+Get API key: https://openrouter.ai/keys
+
+#### 2. Ollama Cloud - Mistral Large 3
+
+**Setup:**
+```bash
+export SEARXNG_AI_PROVIDER=ollama
+export SEARXNG_AI_API_KEY=your_ollama_cloud_api_key
+# Model is auto-set to: mistral-large-3:675b-cloud
+```
+
+Get API key: https://ollama.com/settings/keys  
+**Note:** This is Ollama **CLOUD** service, not local Ollama
+
+#### 3. Google Gemini - Latest Flash Model
+
+**Setup:**
+```bash
+export SEARXNG_AI_PROVIDER=gemini
+export SEARXNG_AI_API_KEY=your_gemini_api_key
+# Model is auto-detected (e.g., gemini-2.0-flash-exp)
+```
+
+Get API key: https://aistudio.google.com/app/apikey
+
+**Features:**
+- 🔄 **Auto-update**: Automatically detects latest Gemini Flash model
+- 🚀 **Latest Technology**: Always uses newest Flash version
+- 🛡️ **Fallback**: Uses known stable version if detection fails
+
+### Usage
+
+Enable AI enhancement with `ai_enhance=True`:
+
+```python
+# Basic AI-enhanced search
+result = search(query="quantum computing", ai_enhance=True)
+
+# Returns enhanced results with:
+# - ai_summary: Comprehensive 2-3 paragraph summary
+# - key_insights: 3-5 important findings
+# - recommended_sources: Top 3 sources with explanations
+# - model: Model used (e.g., "mistralai/mistral-large-2512")
+# - provider: Provider used (e.g., "openrouter")
+```
+
+### When to Use AI Enhancement
+
+**✅ Good for:**
+- Research questions needing synthesis
+- Complex topics requiring summarization  
+- Curated source recommendations
+- Information gathering for decisions
+
+**❌ Avoid for:**
+- Simple factual lookups (adds latency)
+- When raw results are sufficient
+- Real-time/time-sensitive searches
+
+## Additional Tools
+
+### Interactive Setup Wizard
+
+Run the guided setup wizard for easy configuration:
+
+```bash
+python wizard.py
+```
+
+Features:
+- OS detection (Windows/Linux/macOS)
+- Instance strategy selection (online-only, local, hybrid)
+- AI provider configuration
+- Local SearXNG installation guidance
+- Automatic .env file generation
+
+### Web Dashboard
+
+Monitor your SearXNG MCP server in real-time:
+
+```bash
+python -m searxng_mcp.dashboard
+```
+
+Then open: http://localhost:8765
+
+Features:
+- 🎨 Professional dark theme
+- 📊 Real-time instance health monitoring
+- ⚡ Response time tracking
+- 🔍 Built-in search testing
+- 🔌 WebSocket-based live updates
+- 📋 Configuration viewer
+
+### Health Check Tool
+
+Check the health of all configured instances:
+
+```bash
+# Basic health check
+python -m searxng_mcp.health
+
+# With configuration details
+python -m searxng_mcp.health --verbose
+```
+
+Features:
+- Tests all configured instances
+- Shows response times
+- Color-coded status (healthy/timeout/unreachable)
+- Exit codes for automation (0=healthy, 1=some failing, 2=all failing)
 
 ### Search Syntax
 
@@ -505,6 +647,33 @@ WantedBy=multi-user.target
 - [ ] Docker container and Kubernetes deployment
 - [ ] Comprehensive test suite
 - [ ] CLI interface for standalone use
+
+## Documentation
+
+### For AI Agents
+
+📋 **[MCP_AGENT_GUIDE.md](MCP_AGENT_GUIDE.md)** - **Single Source of Truth**  
+Complete guide for AI agents using this tool:
+- Quick reference and examples
+- Complete tool catalog
+- Search capabilities and syntax
+- AI enhancement guide
+- Usage patterns and best practices
+- Configuration and troubleshooting
+
+### For Users
+
+📚 **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide  
+🔧 **[INSTALL.md](INSTALL.md)** - Complete installation instructions  
+🎨 **[DASHBOARD.md](DASHBOARD.md)** - Web dashboard guide  
+🤝 **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines  
+🔒 **[SECURITY.md](SECURITY.md)** - Security policies
+
+### Testing & Quality
+
+✅ **[TEST_REPORT_100_PERCENT.md](TEST_REPORT_100_PERCENT.md)** - 100% test pass report  
+🔍 **[COVE_ANALYSIS_V2.md](COVE_ANALYSIS_V2.md)** - Comprehensive QA analysis  
+📊 **[STATUS_V0.2.0.md](STATUS_V0.2.0.md)** - Release status
 
 ## References
 

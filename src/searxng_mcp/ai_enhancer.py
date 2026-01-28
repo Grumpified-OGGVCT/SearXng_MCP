@@ -30,6 +30,9 @@ class AIEnhancer:
             self.model = "mistralai/mistral-large-2512"
         elif self.provider == "ollama" and not self.model:
             self.model = "mistral-large-3:675b-cloud"
+        elif self.provider == "gemini" and not self.model:
+            # Auto-detect latest Flash model or use current default
+            self.model = self._get_latest_gemini_flash_model()
 
         # Provider configurations
         self.config = self._get_provider_config()
@@ -58,10 +61,58 @@ class AIEnhancer:
                     "Content-Type": "application/json",
                 },
                 "api_key_param": True,  # Gemini uses ?key= parameter
+                "api_key": self.api_key,  # Store API key for Gemini
             },
         }
 
         return configs.get(self.provider, {})
+    
+    def _get_latest_gemini_flash_model(self) -> str:
+        """
+        Auto-detect the latest Gemini Flash model.
+        
+        Returns the latest available Flash model or falls back to known default.
+        Checks Google's model list API for the newest gemini-*-flash model.
+        """
+        default_model = "gemini-2.0-flash-exp"  # Current latest as of Jan 2026
+        
+        if not self.api_key or httpx is None:
+            return default_model
+            
+        try:
+            # Try to fetch available models from Google API
+            with httpx.Client(timeout=10.0) as client:
+                response = client.get(
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={self.api_key}"
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models", [])
+                    
+                    # Find all flash models and sort by version
+                    flash_models = []
+                    for model in models:
+                        name = model.get("name", "")
+                        # Extract model name from "models/gemini-x.x-flash-xxx" format
+                        if "flash" in name.lower():
+                            model_id = name.split("/")[-1] if "/" in name else name
+                            # Prefer experimental versions as they're the latest
+                            if "exp" in model_id or "latest" in model_id:
+                                flash_models.insert(0, model_id)
+                            else:
+                                flash_models.append(model_id)
+                    
+                    # Return the first (most recent) flash model found
+                    if flash_models:
+                        return flash_models[0]
+                        
+        except Exception as e:
+            # Log but don't fail - just use default
+            import logging
+            logging.debug(f"Could not auto-detect Gemini model: {e}")
+            
+        return default_model
 
     def is_enabled(self) -> bool:
         """Check if AI enhancement is enabled."""
