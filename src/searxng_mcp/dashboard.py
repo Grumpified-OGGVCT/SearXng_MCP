@@ -2,23 +2,34 @@
 SearXNG MCP Dashboard Server
 
 Professional web dashboard for monitoring and managing SearXNG MCP server.
-Provides real-time health monitoring, configuration management, and search testing.
+Provides real-time health monitoring, configuration management, search testing,
+and an advanced chat interface with RAG capabilities.
 """
 
 import asyncio
 import json
+import logging
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel
+
+try:
+    from searxng_mcp.ai_enhancer import get_ai_enhancer
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 # Background task
@@ -82,6 +93,67 @@ class SearchRequest(BaseModel):
     language: str = "en"
 
 
+class ChatMessage(BaseModel):
+    """Chat message model."""
+
+    message: str
+    language: str = "en"
+    category: str = "general"
+
+
+class ChatSession:
+    """Manages a chat session with history and context."""
+
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+        self.messages: List[Dict[str, Any]] = []
+        self.goals: List[Dict[str, Any]] = []
+        self.user_model: Dict[str, int] = {
+            "Technical Knowledge": 50,
+            "Research Interest": 50,
+            "Detail Preference": 50,
+        }
+        self.created_at = datetime.utcnow()
+        self.last_activity = datetime.utcnow()
+
+    def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
+        """Add a message to the session history."""
+        self.messages.append({
+            "role": role,
+            "content": content,
+            "timestamp": datetime.utcnow().isoformat(),
+            "metadata": metadata or {}
+        })
+        self.last_activity = datetime.utcnow()
+
+    def update_goal(self, goal_text: str, confidence: int):
+        """Update or add a goal."""
+        for goal in self.goals:
+            if goal["text"] == goal_text:
+                goal["confidence"] = confidence
+                goal["updated"] = datetime.utcnow().isoformat()
+                return
+
+        self.goals.append({
+            "id": str(uuid.uuid4()),
+            "text": goal_text,
+            "confidence": confidence,
+            "status": "in-progress",
+            "created": datetime.utcnow().isoformat(),
+            "updated": datetime.utcnow().isoformat()
+        })
+
+    def update_user_model(self, key: str, value: int):
+        """Update user model attribute."""
+        if key in self.user_model:
+            self.user_model[key] = max(0, min(100, value))
+
+    def get_context(self) -> str:
+        """Get conversation context for AI."""
+        context_messages = self.messages[-5:]  # Last 5 messages
+        return "\n".join([f"{msg['role']}: {msg['content']}" for msg in context_messages])
+
+
 class DashboardManager:
     """Manages dashboard data and monitoring."""
 
@@ -89,6 +161,8 @@ class DashboardManager:
         self.load_config()
         self.health_history: List[Dict] = []
         self.search_stats = {"total_searches": 0, "successful_searches": 0, "failed_searches": 0}
+        self.chat_sessions: Dict[str, ChatSession] = {}
+        self.ai_enhancer = get_ai_enhancer() if AI_AVAILABLE else None
 
     def load_config(self):
         """Load configuration from environment."""
@@ -208,6 +282,141 @@ class DashboardManager:
         finally:
             self.search_stats["total_searches"] += 1
 
+    def get_or_create_session(self, session_id: Optional[str] = None) -> ChatSession:
+        """Get or create a chat session."""
+        if session_id and session_id in self.chat_sessions:
+            return self.chat_sessions[session_id]
+
+        new_id = session_id or str(uuid.uuid4())
+        session = ChatSession(new_id)
+        self.chat_sessions[new_id] = session
+        return session
+
+    async def process_chat_message(self, session: ChatSession, message: str, language: str = "en", category: str = "general") -> Dict[str, Any]:
+        """Process a chat message with search and AI enhancement."""
+        response = {
+            "thinking": None,
+            "search_results": [],
+            "ai_summary": None,
+            "response": None,
+            "goals": session.goals,
+            "user_model": session.user_model
+        }
+
+        try:
+            # Add user message to history
+            session.add_message("user", message)
+
+            # Update goals based on message
+            session.update_goal("Understanding user intent", 75)
+
+            # Perform search
+            response["thinking"] = "Searching for relevant information..."
+            
+            search_result = None
+            for instance in self.instances:
+                result = await self.search_instance(
+                    instance,
+                    message,
+                    language=language,
+                    categories=category
+                )
+                if result["status"] == "success":
+                    search_result = result["data"]
+                    break
+
+            if not search_result:
+                response["response"] = "I couldn't find any search results. Please try rephrasing your question."
+                session.add_message("assistant", response["response"])
+                return response
+
+            # Extract results
+            results = search_result.get("results", [])
+            response["search_results"] = results[:10]
+
+            # Update goals
+            session.update_goal("Finding relevant sources", 90)
+            session.update_goal("Analyzing information", 60)
+
+            # AI Enhancement if available
+            if self.ai_enhancer and self.ai_enhancer.is_enabled():
+                response["thinking"] = "Analyzing search results with AI..."
+                
+                try:
+                    enhancement = await self.ai_enhancer.enhance_results(message, results)
+                    
+                    if enhancement.get("enhanced"):
+                        ai_summary = enhancement.get("ai_summary", "")
+                        insights = enhancement.get("key_insights", [])
+                        sources = enhancement.get("recommended_sources", [])
+
+                        # Build comprehensive response
+                        response_text = f"{ai_summary}\n\n"
+                        
+                        if insights:
+                            response_text += "**Key Insights:**\n"
+                            for i, insight in enumerate(insights[:5], 1):
+                                response_text += f"{i}. {insight}\n"
+                            response_text += "\n"
+
+                        if sources:
+                            response_text += "**Top Sources:**\n"
+                            for i, source in enumerate(sources[:3], 1):
+                                response_text += f"{i}. [{source.get('title', 'Source')}]({source.get('url', '#')})\n"
+                                response_text += f"   {source.get('reason', '')}\n"
+
+                        response["response"] = response_text
+                        response["ai_summary"] = ai_summary
+
+                        # Update user model based on query complexity
+                        if len(message.split()) > 10:
+                            session.update_user_model("Technical Knowledge", session.user_model["Technical Knowledge"] + 5)
+                        session.update_user_model("Research Interest", session.user_model["Research Interest"] + 3)
+
+                        # Complete goals
+                        session.update_goal("Analyzing information", 100)
+                        session.update_goal("Providing comprehensive answer", 100)
+
+                    else:
+                        # Fallback to basic summary
+                        response["response"] = self._create_basic_summary(message, results)
+
+                except Exception as e:
+                    logger.error(f"AI enhancement failed: {e}")
+                    response["response"] = self._create_basic_summary(message, results)
+            else:
+                # No AI available - basic summary
+                response["response"] = self._create_basic_summary(message, results)
+
+            session.add_message("assistant", response["response"])
+
+        except Exception as e:
+            logger.error(f"Error processing chat message: {e}")
+            response["response"] = f"I encountered an error processing your message: {str(e)}"
+            session.add_message("assistant", response["response"])
+
+        response["goals"] = session.goals
+        response["user_model"] = session.user_model
+        return response
+
+    def _create_basic_summary(self, query: str, results: List[Dict]) -> str:
+        """Create a basic summary when AI is not available."""
+        if not results:
+            return "I couldn't find any results for your query."
+
+        summary = f"I found {len(results)} results for your query.\n\n"
+        summary += "**Top Results:**\n"
+        
+        for i, result in enumerate(results[:5], 1):
+            title = result.get("title", "No title")
+            url = result.get("url", "")
+            content = result.get("content", "")[:150]
+            summary += f"{i}. **{title}**\n"
+            summary += f"   {content}...\n"
+            summary += f"   [View source]({url})\n\n"
+
+        return summary
+
 
 # Initialize manager
 manager = DashboardManager()
@@ -227,7 +436,13 @@ async def broadcast_health_update(data: Dict):
 # API Endpoints
 @app.get("/")
 async def root():
-    """Serve the dashboard HTML."""
+    """Serve the chat interface."""
+    return FileResponse("src/searxng_mcp/static/chat.html")
+
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the monitoring dashboard."""
     return FileResponse("src/searxng_mcp/static/dashboard.html")
 
 
@@ -273,6 +488,120 @@ async def test_search(request: SearchRequest):
             return result
     
     return {"status": "error", "error": "All instances failed"}
+
+
+@app.post("/api/chat")
+async def chat_endpoint(message: ChatMessage):
+    """Process a chat message via REST API."""
+    session = manager.get_or_create_session()
+    result = await manager.process_chat_message(
+        session,
+        message.message,
+        message.language,
+        message.category
+    )
+    return result
+
+
+@app.websocket("/ws/chat")
+async def chat_websocket(websocket: WebSocket):
+    """WebSocket endpoint for real-time chat."""
+    await websocket.accept()
+    session_id = str(uuid.uuid4())
+    session = manager.get_or_create_session(session_id)
+    
+    try:
+        # Send welcome message
+        await websocket.send_json({
+            "type": "connected",
+            "session_id": session_id
+        })
+        
+        while True:
+            data = await websocket.receive_json()
+            message_type = data.get("type")
+            
+            if message_type == "chat":
+                message = data.get("message", "")
+                language = data.get("language", "en")
+                category = data.get("category", "general")
+                
+                # Send thinking status
+                await websocket.send_json({
+                    "type": "thinking",
+                    "content": "Processing your query..."
+                })
+                
+                # Send monologue update
+                await websocket.send_json({
+                    "type": "monologue",
+                    "content": f"Analyzing query: '{message}'"
+                })
+                
+                # Process message
+                result = await manager.process_chat_message(session, message, language, category)
+                
+                # Send thinking update
+                if result.get("thinking"):
+                    await websocket.send_json({
+                        "type": "thinking",
+                        "content": result["thinking"]
+                    })
+                    await websocket.send_json({
+                        "type": "monologue",
+                        "content": result["thinking"]
+                    })
+                
+                # Send search results
+                if result.get("search_results"):
+                    await websocket.send_json({
+                        "type": "search_results",
+                        "content": result["search_results"]
+                    })
+                    await websocket.send_json({
+                        "type": "monologue",
+                        "content": f"Found {len(result['search_results'])} relevant sources"
+                    })
+                
+                # Send goals update
+                if result.get("goals"):
+                    await websocket.send_json({
+                        "type": "goal_update",
+                        "content": result["goals"]
+                    })
+                
+                # Send user model update
+                if result.get("user_model"):
+                    await websocket.send_json({
+                        "type": "user_model_update",
+                        "content": result["user_model"]
+                    })
+                
+                # Send final response
+                if result.get("response"):
+                    await websocket.send_json({
+                        "type": "response",
+                        "content": result["response"]
+                    })
+                    await websocket.send_json({
+                        "type": "monologue",
+                        "content": "Response generated successfully"
+                    })
+                
+            elif message_type == "ping":
+                await websocket.send_json({"type": "pong"})
+                
+    except WebSocketDisconnect:
+        logger.info(f"Chat session {session_id} disconnected")
+    except Exception as e:
+        logger.error(f"Chat WebSocket error: {e}")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "content": str(e)
+            })
+        except:
+            pass
 
 
 @app.websocket("/ws")
