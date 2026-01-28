@@ -6,7 +6,6 @@ Handles loading configuration from environment variables and config files.
 
 import os
 from pathlib import Path
-from typing import List, Optional
 
 # Default configuration
 DEFAULT_CONFIG = {

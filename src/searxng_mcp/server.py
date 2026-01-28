@@ -13,23 +13,21 @@ Features:
 - Comprehensive error handling and retry logic
 """
 
-import asyncio
 import json
 import logging
 import os
 from http.cookiejar import LWPCookieJar
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
 from fastmcp import FastMCP
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("searxng_mcp")
 
@@ -62,9 +60,9 @@ class InstanceManager:
 
     def __init__(
         self,
-        instances: Optional[List[str]] = None,
-        cookie_dir: Optional[str] = None,
-        local_instance: Optional[str] = None,
+        instances: list[str] | None = None,
+        cookie_dir: str | None = None,
+        local_instance: str | None = None,
         timeout: float = 5.0,
         local_timeout: float = 15.0,
     ):
@@ -74,7 +72,7 @@ class InstanceManager:
         self.local_timeout = local_timeout
         self.cookie_dir = Path(cookie_dir or Path.home() / ".searxng_mcp" / "cookies")
         self.cookie_dir.mkdir(parents=True, exist_ok=True)
-        self.cookie_jars: Dict[str, LWPCookieJar] = {}
+        self.cookie_jars: dict[str, LWPCookieJar] = {}
         self._init_cookie_jars()
 
     def _init_cookie_jars(self) -> None:
@@ -92,7 +90,9 @@ class InstanceManager:
 
     def _sanitize_url(self, url: str) -> str:
         """Convert URL to safe filename."""
-        return url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
+        return (
+            url.replace("https://", "").replace("http://", "").replace("/", "_").replace(":", "_")
+        )
 
     def save_cookies(self, instance: str) -> None:
         """Save cookies for a specific instance."""
@@ -106,13 +106,13 @@ class InstanceManager:
     async def search(
         self,
         query: str,
-        categories: Optional[str] = None,
-        engines: Optional[str] = None,
+        categories: str | None = None,
+        engines: str | None = None,
         language: str = "en",
-        time_range: Optional[str] = None,
+        time_range: str | None = None,
         safesearch: int = 0,
         page: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Perform search with automatic instance fallback.
 
@@ -167,8 +167,8 @@ class InstanceManager:
         raise Exception("All SearXNG instances failed. Please try again later.")
 
     async def _search_instance(
-        self, instance: str, params: Dict[str, Any], timeout: float
-    ) -> Optional[Dict[str, Any]]:
+        self, instance: str, params: dict[str, Any], timeout: float
+    ) -> dict[str, Any] | None:
         """Search a specific instance."""
         url = urljoin(instance, "/search")
         jar = self.cookie_jars.get(instance)
@@ -197,7 +197,7 @@ class InstanceManager:
 mcp = FastMCP("SearXNG Search")
 
 # Global instance manager
-instance_manager: Optional[InstanceManager] = None
+instance_manager: InstanceManager | None = None
 
 
 def get_instance_manager() -> InstanceManager:
@@ -216,12 +216,16 @@ def get_instance_manager() -> InstanceManager:
 
 @mcp.tool()
 async def search(
-    query: str = Field(description="Search query. Supports bang syntax (!go, !bi) and language modifiers (:en, :zh)"),
-    categories: Optional[str] = Field(
-        None,
-        description="Comma-separated categories: general, images, videos, news, map, music, it, science, files, social_media",
+    query: str = Field(
+        description="Search query. Supports bang syntax (!go, !bi) and language "
+        "modifiers (:en, :zh)"
     ),
-    engines: Optional[str] = Field(
+    categories: str | None = Field(
+        None,
+        description="Comma-separated categories: general, images, videos, news, map, "
+        "music, it, science, files, social_media",
+    ),
+    engines: str | None = Field(
         None,
         description="Comma-separated engine names (e.g., google, bing, duckduckgo, arxiv, github)",
     ),
@@ -229,7 +233,7 @@ async def search(
         "en",
         description="Language code (en, zh, de, fr, es, ja, ko, ru, ar, etc.)",
     ),
-    time_range: Optional[str] = Field(
+    time_range: str | None = Field(
         None,
         description="Filter by time: day, week, month, year",
     ),

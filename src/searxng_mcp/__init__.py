@@ -8,7 +8,7 @@ __version__ = "0.1.0"
 __author__ = "Grumpified OGGVCT"
 __license__ = "MIT"
 
-from searxng_mcp.server import main, mcp, search, list_categories, get_instances
+from searxng_mcp.server import get_instances, list_categories, main, mcp, search
 
 __all__ = [
     "main",

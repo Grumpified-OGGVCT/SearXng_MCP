@@ -33,65 +33,108 @@ SearXNG organizes 245+ search engines into 10 categories:
 
 ## Installation
 
+### Quick Install
+
+**Windows:**
+```cmd
+git clone https://github.com/Grumpified-OGGVCT/SearXng_MCP.git
+cd SearXng_MCP
+install.bat
+```
+
+**Linux / macOS:**
+```bash
+git clone https://github.com/Grumpified-OGGVCT/SearXng_MCP.git
+cd SearXng_MCP
+./install.sh
+```
+
 ### Prerequisites
 
 - Python 3.10 or higher
-- pip or uv package manager
+- pip package manager
+- Git (optional, for cloning)
 
-### Install via pip
+### Automated Installation Scripts
 
-```bash
-# Clone the repository
-git clone https://github.com/Grumpified-OGGVCT/SearXng_MCP.git
-cd SearXng_MCP
+We provide professional installation scripts for all platforms:
 
-# Install dependencies
-pip install -r requirements.txt
+#### Windows
+```cmd
+# Basic installation
+install.bat
 
-# Or install in development mode
-pip install -e .
+# With development dependencies
+install.bat --dev
+
+# Upgrade existing installation
+install.bat --upgrade
+
+# Show help
+install.bat --help
 ```
 
-### Install via uv (recommended)
-
+#### Linux / macOS
 ```bash
-# Clone the repository
-git clone https://github.com/Grumpified-OGGVCT/SearXng_MCP.git
-cd SearXng_MCP
+# Make scripts executable (first time only)
+chmod +x install.sh run.sh
 
-# Create virtual environment and install
-uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install -e .
+# Basic installation
+./install.sh
+
+# With development dependencies
+./install.sh --dev
+
+# Upgrade existing installation
+./install.sh --upgrade
+
+# Show help
+./install.sh --help
 ```
 
-### Platform-Specific Instructions
+The installation scripts will:
+- ✅ Check Python version (3.10+)
+- ✅ Create virtual environment
+- ✅ Install all dependencies
+- ✅ Set up the package
+- ✅ Create configuration files
+- ✅ Set up cookie directory
+
+### Manual Installation
+
+If you prefer manual installation, see [INSTALL.md](INSTALL.md) for detailed instructions.
+
+### Platform-Specific Notes
 
 #### macOS
-
 ```bash
-# Using Homebrew
+# Install Python via Homebrew (recommended)
 brew install python@3.11
-pip3 install -r requirements.txt
+
+# Then run installation script
+./install.sh
 ```
 
 #### Linux (Ubuntu/Debian)
-
 ```bash
+# Install Python 3.11
 sudo apt update
-sudo apt install python3.11 python3-pip
-pip3 install -r requirements.txt
+sudo apt install python3.11 python3.11-venv python3-pip
+
+# Then run installation script
+./install.sh
 ```
 
 #### Windows
-
 ```powershell
-# Download Python from python.org or use winget
+# Install Python (check "Add to PATH")
 winget install Python.Python.3.11
 
-# Install dependencies
-pip install -r requirements.txt
+# Then run installation script
+install.bat
 ```
+
+📖 **For complete installation guide with troubleshooting, see [INSTALL.md](INSTALL.md)**
 
 ## Configuration
 
@@ -144,16 +187,88 @@ Add to your MCP client configuration (e.g., Claude Desktop):
 
 ### Running the Server
 
-#### Stdio mode (for MCP clients)
+#### Using Run Scripts (Recommended)
 
+**Windows:**
+```cmd
+run.bat
+```
+
+**Linux / macOS:**
 ```bash
+./run.sh
+```
+
+The run scripts will:
+- ✅ Verify installation
+- ✅ Activate virtual environment
+- ✅ Load configuration from .env
+- ✅ Start the MCP server
+
+#### Running Directly
+
+**Stdio mode (for MCP clients):**
+```bash
+# Activate virtual environment first
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate     # Windows
+
+# Run server
 python -m searxng_mcp.server
 ```
 
 #### SSE mode (for HTTP clients)
-
 ```bash
 # Coming soon - FastMCP supports multiple transports
+```
+
+### Configuration Files
+
+#### .env File
+
+Create or edit `.env` in the project root:
+```bash
+# Copy example
+cp .env.example .env  # Linux/macOS
+copy .env.example .env  # Windows
+
+# Edit with your settings
+nano .env  # Linux/macOS
+notepad .env  # Windows
+```
+
+#### MCP Client Configuration
+
+**Location:**
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Linux: `~/.config/claude/claude_desktop_config.json`
+
+**Configuration with scripts:**
+```json
+{
+  "mcpServers": {
+    "searxng": {
+      "command": "C:\\Path\\To\\SearXng_MCP\\run.bat",
+      "args": []
+    }
+  }
+}
+```
+
+**Configuration with Python directly:**
+```json
+{
+  "mcpServers": {
+    "searxng": {
+      "command": "python",
+      "args": ["-m", "searxng_mcp.server"],
+      "env": {
+        "SEARXNG_INSTANCES": "https://search.sapti.me,https://searx.be"
+      }
+    }
+  }
+}
 ```
 
 ### MCP Tools

@@ -6,6 +6,7 @@ Demonstrates basic usage of the SearXNG MCP server.
 
 import asyncio
 import json
+
 from searxng_mcp.server import get_instance_manager
 
 
@@ -22,11 +23,11 @@ async def main():
     print("-" * 80)
     results = await manager.search(query="python asyncio")
     data = json.loads(results) if isinstance(results, str) else results
-    print(f"Query: python asyncio")
+    print("Query: python asyncio")
     print(f"Results: {len(data.get('results', []))} found")
     print(f"Instance: {data.get('_instance', 'N/A')}")
-    if data.get('results'):
-        first = data['results'][0]
+    if data.get("results"):
+        first = data["results"][0]
         print(f"Top result: {first.get('title', 'N/A')}")
         print(f"URL: {first.get('url', 'N/A')}")
 
@@ -35,8 +36,8 @@ async def main():
     print("-" * 80)
     results = await manager.search(query="sunset landscape", categories="images")
     data = json.loads(results) if isinstance(results, str) else results
-    print(f"Query: sunset landscape")
-    print(f"Category: images")
+    print("Query: sunset landscape")
+    print("Category: images")
     print(f"Results: {len(data.get('results', []))} found")
 
     # Example 3: Engine-specific search
@@ -44,8 +45,8 @@ async def main():
     print("-" * 80)
     results = await manager.search(query="fastmcp", engines="github")
     data = json.loads(results) if isinstance(results, str) else results
-    print(f"Query: fastmcp")
-    print(f"Engine: github")
+    print("Query: fastmcp")
+    print("Engine: github")
     print(f"Results: {len(data.get('results', []))} found")
 
     # Example 4: Language-specific search
@@ -53,22 +54,18 @@ async def main():
     print("-" * 80)
     results = await manager.search(query="人工智能", language="zh")
     data = json.loads(results) if isinstance(results, str) else results
-    print(f"Query: 人工智能 (Artificial Intelligence)")
-    print(f"Language: zh (Chinese)")
+    print("Query: 人工智能 (Artificial Intelligence)")
+    print("Language: zh (Chinese)")
     print(f"Results: {len(data.get('results', []))} found")
 
     # Example 5: Time-filtered search
     print("\n5. Recent news search:")
     print("-" * 80)
-    results = await manager.search(
-        query="AI breakthroughs",
-        categories="news",
-        time_range="week"
-    )
+    results = await manager.search(query="AI breakthroughs", categories="news", time_range="week")
     data = json.loads(results) if isinstance(results, str) else results
-    print(f"Query: AI breakthroughs")
-    print(f"Category: news")
-    print(f"Time range: week")
+    print("Query: AI breakthroughs")
+    print("Category: news")
+    print("Time range: week")
     print(f"Results: {len(data.get('results', []))} found")
 
     print("\n" + "=" * 80)
