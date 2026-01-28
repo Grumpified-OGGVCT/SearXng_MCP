@@ -4,6 +4,13 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![MCP](https://img.shields.io/badge/MCP-2.0-green.svg)](https://modelcontextprotocol.io)
+[![FastMCP](https://img.shields.io/badge/FastMCP-latest-orange.svg)](https://github.com/jlowin/fastmcp)
+
+> **Quick Start:** `./install.sh` (Unix) or `install.bat` (Windows) → `./run.sh` or `run.bat`  
+> **Full Guide:** [INSTALL.md](INSTALL.md) | **Quick Guide:** [QUICKSTART.md](QUICKSTART.md)
 
 ## Features
 
@@ -30,6 +37,69 @@ SearXNG organizes 245+ search engines into 10 categories:
 | **science** | Scientific papers | arxiv, pubmed, crossref, semantic_scholar, google_scholar | `!arx`, `!pub`, `!gs` |
 | **files** | File search | apkmirror, fdroid, google_play, zlibrary, annas_archive | `!apk`, `!fdr`, `!zlib` |
 | **social_media** | Social platforms | reddit, mastodon, lemmy, 9gag, tootfinder | `!red`, `!mast`, `!lem` |
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph "AI Client"
+        A[Claude Desktop / Other MCP Client]
+    end
+    
+    subgraph "SearXNG MCP Server"
+        B[MCP Server<br/>FastMCP]
+        C[Instance Manager]
+        D[Cookie Manager]
+        B --> C
+        B --> D
+    end
+    
+    subgraph "SearXNG Instances"
+        E1[Instance 1<br/>search.sapti.me]
+        E2[Instance 2<br/>searx.be]
+        E3[Instance 3<br/>search.bus-hit.me]
+        E4[Local Instance<br/>localhost:8888]
+    end
+    
+    subgraph "Search Engines"
+        F1[Google]
+        F2[Bing]
+        F3[GitHub]
+        F4[arXiv]
+        F5[Baidu]
+        F6[Yandex]
+        F7[245+ Engines]
+    end
+    
+    A -->|JSON-RPC 2.0<br/>stdio| B
+    C -->|HTTP/HTTPS<br/>Auto Fallback| E1
+    C -.->|Fallback| E2
+    C -.->|Fallback| E3
+    C -.->|Final Fallback| E4
+    
+    E1 --> F1 & F2 & F3
+    E2 --> F4 & F5 & F6
+    E3 --> F7
+    
+    D -->|Save/Load| G[(Cookie Store<br/>~/.searxng_mcp/cookies)]
+    
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#ffe1e1
+    style D fill:#e1ffe1
+    style E1 fill:#f0f0f0
+    style E2 fill:#f0f0f0
+    style E3 fill:#f0f0f0
+    style E4 fill:#f0f0f0
+```
+
+**Flow:**
+1. AI client sends search request via MCP protocol (stdio transport)
+2. MCP server validates and routes to Instance Manager
+3. Instance Manager tries configured instances with automatic fallback
+4. Cookie Manager maintains preferences per instance
+5. SearXNG instances aggregate results from 245+ search engines
+6. Results returned to AI client in structured JSON format
 
 ## Installation
 

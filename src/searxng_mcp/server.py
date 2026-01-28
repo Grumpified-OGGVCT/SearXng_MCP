@@ -149,7 +149,7 @@ class InstanceManager:
                 if result:
                     return result
             except Exception as e:
-                logger.warning(f"Instance {instance} failed: {e}")
+                logger.exception(f"Instance {instance} failed: {e}")
                 continue
 
         # Fallback to local instance if configured
@@ -162,7 +162,7 @@ class InstanceManager:
                 if result:
                     return result
             except Exception as e:
-                logger.error(f"Local instance {self.local_instance} failed: {e}")
+                logger.exception(f"Local instance {self.local_instance} failed: {e}")
 
         raise Exception("All SearXNG instances failed. Please try again later.")
 
@@ -273,7 +273,7 @@ async def search(
         )
         return json.dumps(results, indent=2, ensure_ascii=False)
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        logger.exception(f"Search failed: {e}")
         return json.dumps({"error": str(e)}, indent=2)
 
 
