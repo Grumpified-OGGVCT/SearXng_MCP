@@ -2,9 +2,9 @@
 AI-Powered Search Enhancement Module
 
 Provides intelligent scraping, summarization, and presentation of search results
-using state-of-the-art language models via multiple providers:
-- OpenRouter (Mistral Large 2512)
-- Ollama Cloud (Mistral Large 3)
+using Gemini Flash models via multiple providers:
+- OpenRouter (google/gemini-2.0-flash-exp)
+- Ollama Cloud (gemini-3-flash-preview:cloud)
 - Google Gemini (auto-detected latest Flash model)
 """
 
@@ -20,11 +20,11 @@ except ImportError:
 
 class AIEnhancer:
     """
-    AI-powered search result enhancement using multiple LLM providers.
+    AI-powered search result enhancement using Gemini Flash models.
     
-    Supports:
-    - OpenRouter: mistralai/mistral-large-2512
-    - Ollama Cloud: mistral-large-3:675b-cloud
+    Supports multiple providers, all using Gemini Flash for optimal performance:
+    - OpenRouter: google/gemini-2.0-flash-exp
+    - Ollama Cloud: gemini-3-flash-preview:cloud
     - Google Gemini: Auto-detected latest Flash model
     """
 
@@ -36,10 +36,11 @@ class AIEnhancer:
         self.enabled = self.provider and self.api_key
 
         # Set default models based on provider
+        # All providers use Gemini Flash for optimal speed/cost/quality balance
         if self.provider == "openrouter" and not self.model:
-            self.model = "mistralai/mistral-large-2512"
+            self.model = "google/gemini-2.0-flash-exp"
         elif self.provider == "ollama" and not self.model:
-            self.model = "mistral-large-3:675b-cloud"
+            self.model = "gemini-3-flash-preview:cloud"
         elif self.provider == "gemini" and not self.model:
             # Auto-detect latest Flash model or use current default
             self.model = self._get_latest_gemini_flash_model()
@@ -184,17 +185,29 @@ class AIEnhancer:
 
     def _prepare_context(self, query: str, results: List[Dict]) -> str:
         """Prepare context from search results for AI processing."""
-        context_parts = [f"Search Query: {query}\n\nSearch Results:\n"]
+        from datetime import datetime
+        
+        # Get current date and time for context
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
+        
+        context_parts = [
+            f"Current Date and Time: {current_datetime}\n",
+            f"Note: Use this current date for any time-sensitive analysis, not your training cutoff date.\n\n",
+            f"Search Query: {query}\n\n",
+            f"Search Results ({len(results)} sources):\n"
+        ]
 
         for i, result in enumerate(results, 1):
             title = result.get("title", "No title")
             url = result.get("url", "")
             content = result.get("content", "")
+            engine = result.get("engine", "unknown")
 
             context_parts.append(
                 f"\n{i}. {title}\n"
+                f"   Source: {engine}\n"
                 f"   URL: {url}\n"
-                f"   Snippet: {content[:200]}...\n"
+                f"   Content: {content}\n"
             )
 
         return "".join(context_parts)
@@ -203,18 +216,32 @@ class AIEnhancer:
         self, query: str, context: str
     ) -> Dict[str, Any]:
         """Generate AI enhancement using configured provider."""
-        system_prompt = """You are an expert research assistant analyzing search results. 
-Your task is to:
-1. Provide a comprehensive summary of the search results
-2. Extract 3-5 key insights or important points
-3. Recommend the top 3 most relevant sources
+        system_prompt = """You are an expert research analyst with access to current web search results.
+
+CRITICAL INSTRUCTIONS:
+1. The search results provided are CURRENT and from TODAY. Use the provided current date/time, NOT your training cutoff date.
+2. Provide COMPREHENSIVE, DETAILED summaries - do not abbreviate or "whittle down" information.
+3. Extract facts and truths from ALL provided sources - be thorough and inclusive.
+4. Your summary should be 3-5 paragraphs of substantive analysis, not brief snippets.
+5. Include specific details, statistics, quotes, and findings from the sources.
+6. When referencing time-sensitive information, use the current date provided in the context.
+
+Your task:
+1. Provide a COMPREHENSIVE summary (3-5 substantial paragraphs) synthesizing ALL search results
+2. Extract 5-7 key insights or important findings (be specific and detailed)
+3. Recommend the top 3-5 most valuable sources with detailed explanations of why they're important
 
 Format your response as JSON with these keys:
-- summary: A 2-3 paragraph summary of findings
-- insights: Array of 3-5 key insights
-- sources: Array of top 3 source recommendations with brief explanations"""
+- summary: A comprehensive 3-5 paragraph analysis covering all major findings
+- insights: Array of 5-7 detailed key insights with specifics
+- sources: Array of top 3-5 source recommendations, each with:
+  - title: Source title
+  - url: Source URL  
+  - reason: Detailed explanation (2-3 sentences) of why this source is valuable
 
-        user_prompt = f"{context}\n\nPlease analyze these search results and provide your enhancement."
+Be thorough, accurate, and comprehensive. Quality over brevity."""
+
+        user_prompt = f"{context}\n\nProvide a comprehensive enhancement of these search results."
 
         if self.provider == "openrouter":
             return await self._call_openrouter(system_prompt, user_prompt)

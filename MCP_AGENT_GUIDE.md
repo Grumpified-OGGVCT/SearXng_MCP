@@ -273,16 +273,24 @@ search(
 
 ### Overview
 
-AI Enhancement uses large language models to:
+AI Enhancement uses **Gemini Flash models** to:
 1. **Summarize** search results into digestible insights
 2. **Extract** key findings and important points
 3. **Recommend** the most relevant sources with explanations
 
+**Why Gemini Flash?**
+- ⚡ **Fast**: 2-3x faster response times
+- 💰 **Cost-Effective**: Significantly cheaper than large models
+- 🎯 **Optimized**: Perfect balance for search summarization
+- 🌐 **Universal**: Available on all three providers
+
 ### Supported Providers
+
+All providers use Gemini Flash models for consistent, high-quality results.
 
 #### 1. OpenRouter
 
-**Model:** Mistral Large 2512 (mistralai/mistral-large-2512)
+**Model:** Gemini 2.0 Flash Experimental (google/gemini-2.0-flash-exp)
 
 **Setup:**
 ```bash
@@ -292,9 +300,14 @@ export SEARXNG_AI_API_KEY=your_openrouter_key
 
 **Get API Key:** https://openrouter.ai/keys
 
+**Advantages:**
+- Multiple model options
+- Pay-per-use pricing
+- No rate limits on most plans
+
 #### 2. Ollama Cloud
 
-**Model:** Mistral Large 3 (mistral-large-3:675b-cloud)
+**Model:** Gemini 3 Flash Preview (gemini-3-flash-preview:cloud)
 
 **Setup:**
 ```bash
@@ -304,11 +317,16 @@ export SEARXNG_AI_API_KEY=your_ollama_cloud_key
 
 **Get API Key:** https://ollama.com/settings/keys
 
-**Note:** This is Ollama **CLOUD** service, not local Ollama
+**Note:** This is Ollama **CLOUD** service, not local Ollama. The `:cloud` tag is required.
+
+**Performance:** 
+- 90.4% on GPQA Diamond (PhD-level reasoning)
+- 81.2% on MMMU Pro
+- State-of-the-art performance with exceptional speed
 
 #### 3. Google Gemini
 
-**Model:** Auto-detected latest Flash (e.g., gemini-2.0-flash-exp)
+**Model:** Auto-detected latest Flash (e.g., gemini-2.0-flash-exp, gemini-3-flash-preview)
 
 **Setup:**
 ```bash
@@ -322,6 +340,7 @@ export SEARXNG_AI_API_KEY=your_gemini_api_key
 - Auto-detects latest Gemini Flash model
 - Checks Google's model API for newest version
 - Falls back to known stable version if detection fails
+- Always uses the most current Flash model available
 
 ### Usage
 
@@ -331,29 +350,50 @@ Enable AI enhancement with `ai_enhance=True`:
 # Basic AI-enhanced search
 result = search(query="quantum computing", ai_enhance=True)
 
-# Access AI-generated content
-print(result["ai_summary"])           # Comprehensive summary
-print(result["key_insights"])         # List of key points
-print(result["recommended_sources"])  # Top sources with reasons
+# Access comprehensive AI-generated content
+print(result["ai_summary"])           # 3-5 paragraph thorough analysis
+print(result["key_insights"])         # 5-7 detailed, specific findings
+print(result["recommended_sources"])  # Top 3-5 sources with detailed reasons
 
 # Check which model was used
-print(result["model"])      # e.g., "mistralai/mistral-large-2512"
+print(result["model"])      # e.g., "google/gemini-2.0-flash-exp"
 print(result["provider"])   # e.g., "openrouter"
 ```
 
+**⏱️ Important - Response Time:**
+
+AI-enhanced searches take significantly longer than regular searches:
+
+| Phase | Duration | What's Happening |
+|-------|----------|------------------|
+| **Search** | 1-3 seconds | Fetching results from SearXNG instances |
+| **AI Analysis** | 5-15 seconds | Comprehensive analysis of ALL sources |
+| **Total** | **6-18 seconds** | Complete enhanced response |
+
+**What the AI Does:**
+- Receives **current date/time** (not training cutoff date)
+- Analyzes **ALL** provided search results thoroughly
+- Generates **comprehensive** 3-5 paragraph summaries (not brief snippets)
+- Extracts **detailed, specific** facts and insights
+- Provides **thorough explanations** for source recommendations
+
 ### When to Use AI Enhancement
 
-**✅ Good Use Cases:**
-- Research questions needing synthesis
-- Complex topics requiring summarization
-- When you need curated source recommendations
-- Information gathering for decision-making
+**✅ Excellent for:**
+- Research questions needing synthesis across multiple sources
+- Complex topics requiring comprehensive, detailed analysis
+- When you need thorough summaries with specific facts, not brief snippets
+- Curated source recommendations with detailed reasoning (2-3 sentences each)
+- Information gathering for important decisions
+- Topics where understanding nuance and depth matters
+- Current events (AI knows today's date)
 
-**❌ Avoid When:**
-- Simple factual lookups (adds latency)
+**❌ Skip for:**
+- Simple factual lookups (adds 5-15 seconds)
 - When raw search results are sufficient
-- Budget-conscious scenarios (AI calls cost money)
-- Real-time/time-sensitive searches
+- Time-critical searches needing instant results (< 3 seconds)
+- Quick fact-checking queries
+- When speed is more important than depth
 
 ---
 

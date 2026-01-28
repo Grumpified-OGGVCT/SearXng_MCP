@@ -26,8 +26,9 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 - 🤖 **AI-Powered Summarization**: Get intelligent summaries of search results
 - 💡 **Key Insights Extraction**: Automatic extraction of important findings
 - 📚 **Source Recommendations**: AI-curated top sources with explanations
-- 🔄 **Multi-Provider Support**: OpenRouter (Mistral Large 2512), Ollama Cloud (Mistral Large 3), Google Gemini
-- 🎯 **Auto-Update**: Gemini Flash model auto-detects latest version
+- 🔄 **Multi-Provider Support**: OpenRouter, Ollama Cloud, or Google Gemini API
+- ⚡ **Gemini Flash Models**: Fast, efficient, and cost-effective across all providers
+- 🎯 **Auto-Update**: Gemini API auto-detects latest Flash version
 
 ### Tools & Monitoring
 - 🧙 **Interactive Setup Wizard**: Guided terminal wizard for easy configuration (`python wizard.py`)
@@ -412,47 +413,63 @@ get_instances()
 
 ## AI Enhancement (Optional)
 
-Enable intelligent summarization and insights extraction using state-of-the-art language models.
+Enable intelligent summarization and insights extraction using Gemini Flash models across multiple providers.
+
+### Why Gemini Flash?
+
+All providers use **Gemini Flash** models for optimal performance:
+- ⚡ **Fast**: 2-3x faster than large models
+- 💰 **Cost-Effective**: Significantly cheaper than large models
+- 🎯 **Perfect for Search**: Ideal balance of speed, cost, and quality for summarization
+- 🌐 **Available Everywhere**: Supported on OpenRouter, Ollama Cloud, and Gemini API
 
 ### Supported Providers
 
-#### 1. OpenRouter - Mistral Large 2512
+#### 1. OpenRouter - Gemini 2.0 Flash
+
+**Model:** `google/gemini-2.0-flash-exp`
 
 **Setup:**
 ```bash
 export SEARXNG_AI_PROVIDER=openrouter
 export SEARXNG_AI_API_KEY=your_openrouter_api_key
-# Model is auto-set to: mistralai/mistral-large-2512
+# Model is auto-set to: google/gemini-2.0-flash-exp
 ```
 
 Get API key: https://openrouter.ai/keys
 
-#### 2. Ollama Cloud - Mistral Large 3
+#### 2. Ollama Cloud - Gemini 3 Flash Preview
+
+**Model:** `gemini-3-flash-preview:cloud` (note the `:cloud` tag!)
 
 **Setup:**
 ```bash
 export SEARXNG_AI_PROVIDER=ollama
 export SEARXNG_AI_API_KEY=your_ollama_cloud_api_key
-# Model is auto-set to: mistral-large-3:675b-cloud
+# Model is auto-set to: gemini-3-flash-preview:cloud
 ```
 
 Get API key: https://ollama.com/settings/keys  
 **Note:** This is Ollama **CLOUD** service, not local Ollama
 
+**Performance:** Gemini 3 Flash delivers frontier performance on PhD-level reasoning (90.4% GPQA Diamond) while maintaining exceptional speed.
+
 #### 3. Google Gemini - Latest Flash Model
+
+**Model:** Auto-detected (e.g., `gemini-2.0-flash-exp` or `gemini-3-flash-preview`)
 
 **Setup:**
 ```bash
 export SEARXNG_AI_PROVIDER=gemini
 export SEARXNG_AI_API_KEY=your_gemini_api_key
-# Model is auto-detected (e.g., gemini-2.0-flash-exp)
+# Model is auto-detected (always latest Flash)
 ```
 
 Get API key: https://aistudio.google.com/app/apikey
 
 **Features:**
 - 🔄 **Auto-update**: Automatically detects latest Gemini Flash model
-- 🚀 **Latest Technology**: Always uses newest Flash version
+- 🚀 **Latest Technology**: Always uses newest Flash version available
 - 🛡️ **Fallback**: Uses known stable version if detection fails
 
 ### Usage
@@ -463,26 +480,37 @@ Enable AI enhancement with `ai_enhance=True`:
 # Basic AI-enhanced search
 result = search(query="quantum computing", ai_enhance=True)
 
-# Returns enhanced results with:
-# - ai_summary: Comprehensive 2-3 paragraph summary
-# - key_insights: 3-5 important findings
-# - recommended_sources: Top 3 sources with explanations
-# - model: Model used (e.g., "mistralai/mistral-large-2512")
+# Returns comprehensive enhanced results with:
+# - ai_summary: Thorough 3-5 paragraph analysis (not brief snippets!)
+# - key_insights: 5-7 detailed, specific findings from all sources
+# - recommended_sources: Top 3-5 sources with detailed explanations
+# - model: Model used (e.g., "google/gemini-2.0-flash-exp")
 # - provider: Provider used (e.g., "openrouter")
 ```
+
+**⏱️ Response Time:**
+AI-enhanced searches require additional processing time:
+1. **Search Phase**: 1-3 seconds (fetch results from SearXNG)
+2. **AI Analysis**: 5-15 seconds (comprehensive analysis of all sources)
+3. **Total**: 6-18 seconds for complete response
+
+The AI receives **current date/time** and analyzes **ALL** sources thoroughly for comprehensive, fact-based summaries.
 
 ### When to Use AI Enhancement
 
 **✅ Good for:**
-- Research questions needing synthesis
-- Complex topics requiring summarization  
-- Curated source recommendations
-- Information gathering for decisions
+- Research needing synthesis across multiple sources
+- Complex topics requiring comprehensive analysis
+- When you need thorough summaries with specific facts and details
+- Curated recommendations with detailed reasoning
+- Information gathering for important decisions
+- Topics where understanding nuance matters
 
 **❌ Avoid for:**
-- Simple factual lookups (adds latency)
+- Simple factual lookups (adds 5-15 seconds)
 - When raw results are sufficient
-- Real-time/time-sensitive searches
+- Time-critical searches needing instant results
+- Quick fact-checking queries
 
 ## Additional Tools
 
