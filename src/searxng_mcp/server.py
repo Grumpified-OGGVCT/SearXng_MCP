@@ -13,9 +13,11 @@ Features:
 - Comprehensive error handling and retry logic
 """
 
+import asyncio
 import json
 import logging
 import os
+import threading
 import time
 from http.cookiejar import LWPCookieJar
 from pathlib import Path
@@ -306,26 +308,32 @@ async def search(
     ai_provider = None
     ai_model = None
     search_success = True
+    ai_success = True
     error_msg = None
     
     try:
-        # Check cache first
-        cached = cache.get(
-            query=query,
-            categories=categories or "",
-            engines=engines or "",
-            language=language,
-            time_range=time_range or "",
-            safesearch=safesearch,
-            ai_enhance=ai_enhance,
-        )
+        # Check cache first (only for page 1 - pagination not cached)
+        cached = None
+        if page == 1:
+            cached = cache.get(
+                query=query,
+                categories=categories or "",
+                engines=engines or "",
+                language=language,
+                time_range=time_range or "",
+                safesearch=safesearch,
+                ai_enhance=ai_enhance,
+            )
         
         if cached:
             logger.info(f"Cache hit for query: {query[:50]}...")
             cached_result = True
             results = cached
         else:
-            logger.info(f"Cache miss for query: {query[:50]}...")
+            if page == 1:
+                logger.info(f"Cache miss for query: {query[:50]}...")
+            else:
+                logger.info(f"Pagination page {page} (not cached)")
             # Perform search
             results = await manager.search(
                 query=query,
@@ -360,38 +368,41 @@ async def search(
                 except Exception as e:
                     logger.exception(f"AI enhancement failed: {e}")
                     error_msg = f"AI enhancement failed: {str(e)}"
+                    ai_success = False
                     results["ai_enhancement"] = {
                         "enabled": False,
                         "error": str(e),
                         "message": "AI enhancement failed but search results are still available",
                     }
             
-            # Cache the result
-            cache.set(
-                data=results,
-                query=query,
-                categories=categories or "",
-                engines=engines or "",
-                language=language,
-                time_range=time_range or "",
-                safesearch=safesearch,
-                ai_enhance=ai_enhance,
-            )
+            # Cache the result (only page 1)
+            if page == 1:
+                cache.set(
+                    data=results,
+                    query=query,
+                    categories=categories or "",
+                    engines=engines or "",
+                    language=language,
+                    time_range=time_range or "",
+                    safesearch=safesearch,
+                    ai_enhance=ai_enhance,
+                )
         
         latency = time.time() - start_time
         
         # Record metrics
+        # Note: token_estimate is approximate - real usage varies by query/results
         metrics.record_search(
             query=query,
             categories=categories or "",
-            ai_enhanced=ai_enhance,
+            ai_enhanced=ai_enhance and ai_success,
             cached=cached_result,
             latency=latency,
             success=search_success,
             error=error_msg,
             provider=ai_provider,
             model=ai_model,
-            token_estimate={"input": 2000, "output": 500} if ai_enhance else None,
+            token_estimate={"input": 2000, "output": 500} if (ai_enhance and ai_success) else None,
         )
         
         return json.dumps(results, indent=2, ensure_ascii=False)
@@ -405,7 +416,7 @@ async def search(
         metrics.record_search(
             query=query,
             categories=categories or "",
-            ai_enhanced=ai_enhance,
+            ai_enhanced=False,
             cached=False,
             latency=latency,
             success=False,
@@ -500,8 +511,6 @@ def main() -> None:
     get_metrics()
     
     # Run periodic cleanup
-    import asyncio
-    
     async def periodic_cleanup():
         """Periodic cleanup task."""
         while True:
@@ -515,11 +524,11 @@ def main() -> None:
     
     # Start cleanup task in background
     try:
-        import threading
         def run_cleanup():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(periodic_cleanup())
+            loop.create_task(periodic_cleanup())
+            loop.run_forever()
         
         cleanup_thread = threading.Thread(target=run_cleanup, daemon=True)
         cleanup_thread.start()
