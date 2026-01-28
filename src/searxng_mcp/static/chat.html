@@ -811,7 +811,7 @@
         <div class="modal">
             <div class="modal-header">
                 <h2 class="modal-title">⚙️ Settings</h2>
-                <button class="modal-close" onclick="closeSettings()">×</button>
+                <button class="modal-close" onclick="closeSettings()" aria-label="Close settings">×</button>
             </div>
 
             <div class="setting-group">
@@ -867,6 +867,8 @@
         let currentTheme = 'dark';
         let messageHistory = [];
         let isTyping = false;
+        let reconnectAttempts = 0;
+        const MAX_MESSAGE_LENGTH = 4000;
 
         // Initialize WebSocket
         function connectWebSocket() {
@@ -876,6 +878,7 @@
             ws.onopen = () => {
                 console.log('WebSocket connected');
                 updateStatus('connected', 'Connected');
+                reconnectAttempts = 0; // Reset on successful connection
             };
 
             ws.onmessage = (event) => {
@@ -885,7 +888,17 @@
             ws.onclose = () => {
                 console.log('WebSocket disconnected, reconnecting...');
                 updateStatus('disconnected', 'Disconnected');
-                setTimeout(connectWebSocket, 3000);
+                
+                // Exponential backoff reconnection
+                reconnectAttempts++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Max 30s
+                
+                if (reconnectAttempts <= 10) {
+                    setTimeout(connectWebSocket, delay);
+                } else {
+                    console.error('Max reconnection attempts reached');
+                    updateStatus('disconnected', 'Connection Lost');
+                }
             };
 
             ws.onerror = (error) => {
@@ -938,21 +951,33 @@
 
             if (!message || isTyping) return;
 
+            // Validate message length
+            if (message.length > MAX_MESSAGE_LENGTH) {
+                alert(`Message too long. Maximum ${MAX_MESSAGE_LENGTH} characters.`);
+                return;
+            }
+
             // Add user message
             addUserMessage(message);
             messageHistory.push({ role: 'user', content: message });
 
             // Send to WebSocket
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'chat',
-                    message: message,
-                    language: document.getElementById('searchLanguage').value,
-                    category: document.getElementById('searchCategory').value
-                }));
+                try {
+                    ws.send(JSON.stringify({
+                        type: 'chat',
+                        message: message,
+                        language: document.getElementById('searchLanguage').value,
+                        category: document.getElementById('searchCategory').value
+                    }));
 
-                addTypingIndicator();
-                isTyping = true;
+                    addTypingIndicator();
+                    isTyping = true;
+                } catch (error) {
+                    console.error('Failed to send message:', error);
+                    addErrorMessage('Failed to send message. Please try again.');
+                    isTyping = false;
+                }
             } else {
                 // Fallback to REST API
                 sendMessageViaAPI(message);
@@ -1164,12 +1189,27 @@
         }
 
         function openSettings() {
-            document.getElementById('settingsModal').classList.add('active');
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('active');
+            // Focus the first interactive element
+            setTimeout(() => {
+                modal.querySelector('select').focus();
+            }, 100);
         }
 
         function closeSettings() {
             document.getElementById('settingsModal').classList.remove('active');
         }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('settingsModal');
+                if (modal.classList.contains('active')) {
+                    closeSettings();
+                }
+            }
+        });
 
         function setTheme(theme) {
             currentTheme = theme;

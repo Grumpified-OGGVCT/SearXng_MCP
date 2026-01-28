@@ -21,7 +21,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 try:
     from searxng_mcp.ai_enhancer import get_ai_enhancer
@@ -51,13 +51,19 @@ async def periodic_health_check():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for background tasks."""
-    # Startup: start background health checks
-    task = asyncio.create_task(periodic_health_check())
+    # Startup: start background tasks
+    health_task = asyncio.create_task(periodic_health_check())
+    cleanup_task = asyncio.create_task(manager._cleanup_sessions())
     yield
     # Shutdown: cancel background tasks
-    task.cancel()
+    health_task.cancel()
+    cleanup_task.cancel()
     try:
-        await task
+        await health_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await cleanup_task
     except asyncio.CancelledError:
         pass
 
@@ -96,7 +102,7 @@ class SearchRequest(BaseModel):
 class ChatMessage(BaseModel):
     """Chat message model."""
 
-    message: str
+    message: str = Field(..., min_length=1, max_length=4000)
     language: str = "en"
     category: str = "general"
 
@@ -124,6 +130,9 @@ class ChatSession:
             "timestamp": datetime.utcnow().isoformat(),
             "metadata": metadata or {}
         })
+        # Keep only last MAX_MESSAGES_PER_SESSION messages
+        if len(self.messages) > 100:  # Using hardcoded value for now
+            self.messages = self.messages[-100:]
         self.last_activity = datetime.utcnow()
 
     def update_goal(self, goal_text: str, confidence: int):
@@ -157,12 +166,20 @@ class ChatSession:
 class DashboardManager:
     """Manages dashboard data and monitoring."""
 
+    # Configuration constants
+    MAX_MESSAGES_PER_SESSION = 100  # Keep last 100 messages per session
+    SESSION_TIMEOUT_SECONDS = 3600  # 1 hour inactivity timeout
+    MAX_SESSIONS = 1000  # Maximum concurrent sessions
+    USER_MODEL_INCREMENT_LONG_QUERY = 5  # Increment for queries > 10 words
+    USER_MODEL_INCREMENT_RESEARCH = 3  # Increment for research interest
+
     def __init__(self):
         self.load_config()
         self.health_history: List[Dict] = []
         self.search_stats = {"total_searches": 0, "successful_searches": 0, "failed_searches": 0}
         self.chat_sessions: Dict[str, ChatSession] = {}
         self.ai_enhancer = get_ai_enhancer() if AI_AVAILABLE else None
+        self._cleanup_task = None  # Will be started by lifespan
 
     def load_config(self):
         """Load configuration from environment."""
@@ -287,10 +304,40 @@ class DashboardManager:
         if session_id and session_id in self.chat_sessions:
             return self.chat_sessions[session_id]
 
+        # Enforce max sessions limit
+        if len(self.chat_sessions) >= self.MAX_SESSIONS:
+            # Remove oldest inactive session
+            oldest_id = min(self.chat_sessions.keys(), 
+                          key=lambda k: self.chat_sessions[k].last_activity)
+            del self.chat_sessions[oldest_id]
+            logger.info(f"Removed oldest session {oldest_id} due to max limit")
+
         new_id = session_id or str(uuid.uuid4())
         session = ChatSession(new_id)
         self.chat_sessions[new_id] = session
         return session
+
+    async def _cleanup_sessions(self):
+        """Background task to cleanup inactive sessions."""
+        while True:
+            try:
+                await asyncio.sleep(300)  # Check every 5 minutes
+                now = datetime.utcnow()
+                to_remove = []
+                
+                for session_id, session in self.chat_sessions.items():
+                    age = (now - session.last_activity).total_seconds()
+                    if age > self.SESSION_TIMEOUT_SECONDS:
+                        to_remove.append(session_id)
+                
+                for session_id in to_remove:
+                    del self.chat_sessions[session_id]
+                    logger.info(f"Cleaned up inactive session: {session_id}")
+                    
+                if to_remove:
+                    logger.info(f"Cleaned up {len(to_remove)} inactive sessions")
+            except Exception as e:
+                logger.error(f"Session cleanup error: {e}")
 
     async def process_chat_message(self, session: ChatSession, message: str, language: str = "en", category: str = "general") -> Dict[str, Any]:
         """Process a chat message with search and AI enhancement."""
@@ -370,8 +417,10 @@ class DashboardManager:
 
                         # Update user model based on query complexity
                         if len(message.split()) > 10:
-                            session.update_user_model("Technical Knowledge", session.user_model["Technical Knowledge"] + 5)
-                        session.update_user_model("Research Interest", session.user_model["Research Interest"] + 3)
+                            session.update_user_model("Technical Knowledge", 
+                                session.user_model["Technical Knowledge"] + self.USER_MODEL_INCREMENT_LONG_QUERY)
+                        session.update_user_model("Research Interest", 
+                            session.user_model["Research Interest"] + self.USER_MODEL_INCREMENT_RESEARCH)
 
                         # Complete goals
                         session.update_goal("Analyzing information", 100)
@@ -594,14 +643,14 @@ async def chat_websocket(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info(f"Chat session {session_id} disconnected")
     except Exception as e:
-        logger.error(f"Chat WebSocket error: {e}")
+        logger.error(f"Chat WebSocket error: {e}", exc_info=True)
         try:
             await websocket.send_json({
                 "type": "error",
-                "content": str(e)
+                "content": f"Server error: {str(e)}"
             })
-        except:
-            pass
+        except Exception as send_error:
+            logger.error(f"Failed to send error to client: {send_error}")
 
 
 @app.websocket("/ws")
