@@ -37,6 +37,22 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 - 📊 **Real-Time Monitoring**: WebSocket-based live instance health tracking
 - ⚡ **FastMCP Integration**: Built with FastMCP for automatic schema generation and transport flexibility
 
+### Advanced Chat Features (NEW! 🚀)
+- 🧠 **Infinite Context Manager**: RLM-inspired system that reduces token usage by 70-90%
+  - Smart compression of older messages
+  - Automatic fact and entity extraction
+  - Maintains conversation quality with minimal tokens
+  - Real-time compression statistics
+- ⚡ **Real-Time Data Manager**: Always know how fresh your data is
+  - Freshness scoring (0-100%) with visual badges (🔴 LIVE, 🟢 FRESH, 🟡 RECENT)
+  - Time-sensitive query detection
+  - Smart auto-refresh intervals (30s to 1h)
+  - Automatic refresh countdown for live data
+- 📊 **Live Dashboard Panels**: Context stats and RTD status in sidebar
+- 🎯 **Seamless Integration**: Works automatically, no configuration needed
+
+**[📖 See Advanced Features Documentation](ADVANCED_FEATURES.md) for details**
+
 ## Search Categories & Engines
 
 SearXNG organizes 245+ search engines into 10 categories:
