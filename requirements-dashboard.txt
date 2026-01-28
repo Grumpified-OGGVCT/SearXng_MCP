@@ -1,0 +1,6 @@
+# Dashboard-specific dependencies
+# Install with: pip install -r requirements-dashboard.txt
+
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+websockets>=11.0
