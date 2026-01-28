@@ -9,6 +9,7 @@ using Gemini Flash models via multiple providers:
 """
 
 import json
+import logging
 import os
 from typing import Dict, List, Optional, Any
 
@@ -16,6 +17,10 @@ try:
     import httpx
 except ImportError:
     httpx = None
+
+from searxng_mcp.rate_limiter import RateLimiter
+
+logger = logging.getLogger(__name__)
 
 
 class AIEnhancer:
@@ -47,6 +52,10 @@ class AIEnhancer:
 
         # Provider configurations
         self.config = self._get_provider_config()
+        
+        # Initialize rate limiter
+        self.rate_limiter = RateLimiter()
+        logger.info(f"AI enhancer initialized with provider: {self.provider}, model: {self.model}")
 
     def _get_provider_config(self) -> Dict[str, Any]:
         """Get provider-specific configuration."""
@@ -119,8 +128,7 @@ class AIEnhancer:
                         return flash_models[0]
                 else:
                     # Log non-200 responses for debugging
-                    import logging
-                    logging.warning(
+                    logger.warning(
                         f"Gemini model detection failed with status {response.status_code}, "
                         f"using fallback model {default_model}"
                     )
@@ -128,8 +136,7 @@ class AIEnhancer:
         except Exception as e:
             # Log but don't fail - just use default
             # Don't log exception details to avoid exposing API key
-            import logging
-            logging.debug(f"Could not auto-detect Gemini model, using fallback: {default_model}")
+            logger.debug(f"Could not auto-detect Gemini model, using fallback: {default_model}")
             
         return default_model
 
@@ -255,76 +262,109 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
     async def _call_openrouter(
         self, system_prompt: str, user_prompt: str
     ) -> Dict[str, Any]:
-        """Call OpenRouter API."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.config['base_url']}/chat/completions",
-                headers=self.config["headers"],
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "response_format": {"type": "json_object"},
-                },
-            )
+        """Call OpenRouter API with rate limiting."""
+        # Check rate limit
+        allowed = await self.rate_limiter.wait_if_needed(self.provider)
+        if not allowed:
+            raise Exception(f"Rate limit exceeded for {self.provider}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.config['base_url']}/chat/completions",
+                    headers=self.config["headers"],
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "response_format": {"type": "json_object"},
+                    },
+                )
 
-            response.raise_for_status()
-            data = response.json()
+                response.raise_for_status()
+                data = response.json()
 
-            content = data["choices"][0]["message"]["content"]
-            return json.loads(content)
+                content = data["choices"][0]["message"]["content"]
+                return json.loads(content)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                logger.error(f"Rate limit error from {self.provider}: {e}")
+                raise Exception(f"Rate limit exceeded by provider: {self.provider}")
+            raise
 
     async def _call_ollama(
         self, system_prompt: str, user_prompt: str
     ) -> Dict[str, Any]:
-        """Call Ollama Cloud API."""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.config['base_url']}/chat",
-                headers=self.config["headers"],
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "stream": False,
-                    "format": "json",
-                },
-            )
+        """Call Ollama Cloud API with rate limiting."""
+        # Check rate limit
+        allowed = await self.rate_limiter.wait_if_needed(self.provider)
+        if not allowed:
+            raise Exception(f"Rate limit exceeded for {self.provider}")
+        
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.config['base_url']}/chat",
+                    headers=self.config["headers"],
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "stream": False,
+                        "format": "json",
+                    },
+                )
 
-            response.raise_for_status()
-            data = response.json()
+                response.raise_for_status()
+                data = response.json()
 
-            content = data["message"]["content"]
-            return json.loads(content)
+                content = data["message"]["content"]
+                return json.loads(content)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                logger.error(f"Rate limit error from {self.provider}: {e}")
+                raise Exception(f"Rate limit exceeded by provider: {self.provider}")
+            raise
 
     async def _call_gemini(
         self, system_prompt: str, user_prompt: str
     ) -> Dict[str, Any]:
-        """Call Google Gemini API."""
+        """Call Google Gemini API with rate limiting."""
+        # Check rate limit
+        allowed = await self.rate_limiter.wait_if_needed(self.provider)
+        if not allowed:
+            raise Exception(f"Rate limit exceeded for {self.provider}")
+        
         # Combine system and user prompts for Gemini
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.config['base_url']}/models/{self.model}:generateContent?key={self.api_key}",
-                headers=self.config["headers"],
-                json={
-                    "contents": [{"parts": [{"text": combined_prompt}]}],
-                    "generationConfig": {
-                        "response_mime_type": "application/json",
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{self.config['base_url']}/models/{self.model}:generateContent?key={self.api_key}",
+                    headers=self.config["headers"],
+                    json={
+                        "contents": [{"parts": [{"text": combined_prompt}]}],
+                        "generationConfig": {
+                            "response_mime_type": "application/json",
+                        },
                     },
-                },
-            )
+                )
 
-            response.raise_for_status()
-            data = response.json()
+                response.raise_for_status()
+                data = response.json()
 
-            content = data["candidates"][0]["content"]["parts"][0]["text"]
-            return json.loads(content)
+                content = data["candidates"][0]["content"]["parts"][0]["text"]
+                return json.loads(content)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                logger.error(f"Rate limit error from {self.provider}: {e}")
+                raise Exception(f"Rate limit exceeded by provider: {self.provider}")
+            raise
 
     async def quick_summary(self, query: str, results: List[Dict]) -> str:
         """

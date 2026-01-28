@@ -16,6 +16,7 @@ Features:
 import json
 import logging
 import os
+import time
 from http.cookiejar import LWPCookieJar
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,9 @@ from urllib.parse import urljoin
 import httpx
 from fastmcp import FastMCP
 from pydantic import Field
+
+from searxng_mcp.cache import ResultCache
+from searxng_mcp.metrics import MetricsCollector
 
 # Configure logging
 logging.basicConfig(
@@ -199,6 +203,10 @@ mcp = FastMCP("SearXNG Search")
 # Global instance manager
 instance_manager: InstanceManager | None = None
 
+# Global cache and metrics instances
+_cache: ResultCache | None = None
+_metrics: MetricsCollector | None = None
+
 
 def get_instance_manager() -> InstanceManager:
     """Get or create the global instance manager."""
@@ -212,6 +220,24 @@ def get_instance_manager() -> InstanceManager:
             local_instance=local,
         )
     return instance_manager
+
+
+def get_cache() -> ResultCache:
+    """Get or create the global cache instance."""
+    global _cache
+    if _cache is None:
+        _cache = ResultCache()
+        logger.info("Cache initialized")
+    return _cache
+
+
+def get_metrics() -> MetricsCollector:
+    """Get or create the global metrics collector."""
+    global _metrics
+    if _metrics is None:
+        _metrics = MetricsCollector()
+        logger.info("Metrics collector initialized")
+    return _metrics
 
 
 @mcp.tool()
@@ -272,47 +298,123 @@ async def search(
         - "AI research" with ai_enhance=True - Get AI-enhanced summary
     """
     manager = get_instance_manager()
+    cache = get_cache()
+    metrics = get_metrics()
+    
+    start_time = time.time()
+    cached_result = False
+    ai_provider = None
+    ai_model = None
+    search_success = True
+    error_msg = None
+    
     try:
-        results = await manager.search(
+        # Check cache first
+        cached = cache.get(
             query=query,
-            categories=categories,
-            engines=engines,
+            categories=categories or "",
+            engines=engines or "",
             language=language,
-            time_range=time_range,
+            time_range=time_range or "",
             safesearch=safesearch,
-            page=page,
+            ai_enhance=ai_enhance,
         )
         
-        # Apply AI enhancement if requested
-        if ai_enhance:
-            try:
-                from searxng_mcp.ai_enhancer import get_ai_enhancer
-                
-                enhancer = get_ai_enhancer()
-                if enhancer.is_enabled():
-                    logger.info(f"Applying AI enhancement with provider: {enhancer.provider}")
-                    search_results = results.get("results", [])
-                    enhanced = await enhancer.enhance_results(query, search_results)
-                    results["ai_enhancement"] = enhanced
-                    logger.info("AI enhancement completed successfully")
-                else:
+        if cached:
+            logger.info(f"Cache hit for query: {query[:50]}...")
+            cached_result = True
+            results = cached
+        else:
+            logger.info(f"Cache miss for query: {query[:50]}...")
+            # Perform search
+            results = await manager.search(
+                query=query,
+                categories=categories,
+                engines=engines,
+                language=language,
+                time_range=time_range,
+                safesearch=safesearch,
+                page=page,
+            )
+            
+            # Apply AI enhancement if requested
+            if ai_enhance:
+                try:
+                    from searxng_mcp.ai_enhancer import get_ai_enhancer
+                    
+                    enhancer = get_ai_enhancer()
+                    if enhancer.is_enabled():
+                        ai_provider = enhancer.provider
+                        ai_model = enhancer.model
+                        logger.info(f"Applying AI enhancement with provider: {ai_provider}")
+                        search_results = results.get("results", [])
+                        enhanced = await enhancer.enhance_results(query, search_results)
+                        results["ai_enhancement"] = enhanced
+                        logger.info("AI enhancement completed successfully")
+                    else:
+                        results["ai_enhancement"] = {
+                            "enabled": False,
+                            "message": "AI enhancement requires SEARXNG_AI_PROVIDER and SEARXNG_AI_API_KEY environment variables",
+                            "supported_providers": ["openrouter", "ollama", "gemini"],
+                        }
+                except Exception as e:
+                    logger.exception(f"AI enhancement failed: {e}")
+                    error_msg = f"AI enhancement failed: {str(e)}"
                     results["ai_enhancement"] = {
                         "enabled": False,
-                        "message": "AI enhancement requires SEARXNG_AI_PROVIDER and SEARXNG_AI_API_KEY environment variables",
-                        "supported_providers": ["openrouter", "ollama", "gemini"],
+                        "error": str(e),
+                        "message": "AI enhancement failed but search results are still available",
                     }
-            except Exception as e:
-                logger.exception(f"AI enhancement failed: {e}")
-                results["ai_enhancement"] = {
-                    "enabled": False,
-                    "error": str(e),
-                    "message": "AI enhancement failed but search results are still available",
-                }
+            
+            # Cache the result
+            cache.set(
+                data=results,
+                query=query,
+                categories=categories or "",
+                engines=engines or "",
+                language=language,
+                time_range=time_range or "",
+                safesearch=safesearch,
+                ai_enhance=ai_enhance,
+            )
+        
+        latency = time.time() - start_time
+        
+        # Record metrics
+        metrics.record_search(
+            query=query,
+            categories=categories or "",
+            ai_enhanced=ai_enhance,
+            cached=cached_result,
+            latency=latency,
+            success=search_success,
+            error=error_msg,
+            provider=ai_provider,
+            model=ai_model,
+            token_estimate={"input": 2000, "output": 500} if ai_enhance else None,
+        )
         
         return json.dumps(results, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.exception(f"Search failed: {e}")
-        return json.dumps({"error": str(e)}, indent=2)
+        error_msg = str(e)
+        search_success = False
+        latency = time.time() - start_time
+        
+        # Record failure in metrics
+        metrics.record_search(
+            query=query,
+            categories=categories or "",
+            ai_enhanced=ai_enhance,
+            cached=False,
+            latency=latency,
+            success=False,
+            error=error_msg,
+            provider=ai_provider,
+            model=ai_model,
+        )
+        
+        return json.dumps({"error": error_msg}, indent=2)
 
 
 @mcp.tool()
@@ -353,9 +455,77 @@ async def get_instances() -> str:
     return json.dumps(info, indent=2)
 
 
+@mcp.tool()
+async def get_cache_stats() -> str:
+    """
+    Get cache statistics and performance metrics.
+    
+    Returns cache hit/miss rates, size, and configuration.
+    """
+    cache = get_cache()
+    stats = cache.get_cache_info()
+    return json.dumps(stats, indent=2)
+
+
+@mcp.tool()
+async def clear_cache() -> str:
+    """
+    Clear all cached search results.
+    
+    Returns the number of entries cleared.
+    """
+    cache = get_cache()
+    count = cache.clear()
+    return json.dumps({"cleared": count, "message": f"Cleared {count} cache entries"}, indent=2)
+
+
+@mcp.tool()
+async def get_session_stats() -> str:
+    """
+    Get current session metrics.
+    
+    Returns request counts, latency, cost estimates, and provider statistics.
+    """
+    metrics_collector = get_metrics()
+    stats = metrics_collector.get_session_metrics()
+    return json.dumps(stats, indent=2)
+
+
 def main() -> None:
     """Run the MCP server."""
     logger.info("Starting SearXNG MCP server...")
+    
+    # Initialize systems
+    get_cache()
+    get_metrics()
+    
+    # Run periodic cleanup
+    import asyncio
+    
+    async def periodic_cleanup():
+        """Periodic cleanup task."""
+        while True:
+            await asyncio.sleep(3600)  # Every hour
+            try:
+                cache = get_cache()
+                cleaned = cache.cleanup_expired()
+                logger.debug(f"Periodic cleanup: removed {cleaned} expired cache entries")
+            except Exception as e:
+                logger.error(f"Periodic cleanup error: {e}")
+    
+    # Start cleanup task in background
+    try:
+        import threading
+        def run_cleanup():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(periodic_cleanup())
+        
+        cleanup_thread = threading.Thread(target=run_cleanup, daemon=True)
+        cleanup_thread.start()
+    except Exception as e:
+        logger.warning(f"Could not start periodic cleanup: {e}")
+    
     mcp.run()
 
 
