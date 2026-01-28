@@ -1,0 +1,306 @@
+name: Weekly SearXNG Update Check
+
+on:
+  schedule:
+    # Run every Tuesday at 10:00 AM UTC
+    - cron: '0 10 * * 2'
+  workflow_dispatch:
+
+jobs:
+  check-searxng-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        pip install httpx beautifulsoup4 lxml
+    
+    - name: Check SearXNG instances health
+      id: check_instances
+      run: |
+        python << 'EOF'
+import httpx
+import json
+import asyncio
+from datetime import datetime
+
+INSTANCES = [
+    "https://search.sapti.me",
+    "https://searx.be",
+    "https://search.bus-hit.me",
+    "https://search.mdosch.de",
+    "https://searx.tiekoetter.com",
+]
+
+async def check_instance(client, instance):
+    try:
+        response = await client.get(f"{instance}/search", 
+                                   params={"q": "test", "format": "json"},
+                                   timeout=10.0)
+        response.raise_for_status()
+        return {
+            "instance": instance,
+            "status": "healthy",
+            "response_time": response.elapsed.total_seconds(),
+            "status_code": response.status_code
+        }
+    except Exception as e:
+        return {
+            "instance": instance,
+            "status": "unhealthy",
+            "error": str(e),
+            "status_code": None
+        }
+
+async def main():
+    async with httpx.AsyncClient() as client:
+        tasks = [check_instance(client, instance) for instance in INSTANCES]
+        results = await asyncio.gather(*tasks)
+    
+    healthy = [r for r in results if r["status"] == "healthy"]
+    unhealthy = [r for r in results if r["status"] == "unhealthy"]
+    
+    report = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "total": len(results),
+        "healthy": len(healthy),
+        "unhealthy": len(unhealthy),
+        "results": results
+    }
+    
+    with open("instance_health.json", "w") as f:
+        json.dump(report, f, indent=2)
+    
+    print(f"Healthy: {len(healthy)}/{len(results)}")
+    print(f"::set-output name=healthy_count::{len(healthy)}")
+    print(f"::set-output name=unhealthy_count::{len(unhealthy)}")
+    
+    if len(unhealthy) > len(healthy):
+        print("::set-output name=majority_down::true")
+    else:
+        print("::set-output name=majority_down::false")
+
+asyncio.run(main())
+        EOF
+    
+    - name: Fetch searx.space instances
+      id: fetch_instances
+      run: |
+        python << 'EOF'
+import httpx
+import json
+
+try:
+    response = httpx.get("https://searx.space/data/instances.json", timeout=30.0)
+    response.raise_for_status()
+    data = response.json()
+    
+    # Filter for healthy instances
+    healthy_instances = []
+    for url, info in data.get("instances", {}).items():
+        if isinstance(info, dict):
+            # Check if instance is healthy
+            http = info.get("http", {})
+            if http.get("status_code") == 200 and http.get("error") is None:
+                timing = info.get("timing", {})
+                # Only include fast instances (< 5s response time)
+                if timing.get("initial", {}).get("all", {}).get("value", 999) < 5.0:
+                    healthy_instances.append({
+                        "url": url,
+                        "response_time": timing.get("initial", {}).get("all", {}).get("value", 0),
+                        "tls": info.get("tls", {}).get("grade", "N/A"),
+                    })
+    
+    # Sort by response time
+    healthy_instances.sort(key=lambda x: x["response_time"])
+    
+    # Take top 20
+    top_instances = healthy_instances[:20]
+    
+    with open("searx_space_instances.json", "w") as f:
+        json.dump(top_instances, f, indent=2)
+    
+    print(f"Found {len(healthy_instances)} healthy instances")
+    print(f"::set-output name=new_instances_count::{len(healthy_instances)}")
+    
+except Exception as e:
+    print(f"Error fetching searx.space: {e}")
+    print("::set-output name=new_instances_count::0")
+        EOF
+    
+    - name: Check SearXNG releases
+      id: check_releases
+      run: |
+        python << 'EOF'
+import httpx
+import json
+
+try:
+    response = httpx.get("https://api.github.com/repos/searxng/searxng/releases/latest", timeout=10.0)
+    response.raise_for_status()
+    data = response.json()
+    
+    release_info = {
+        "tag": data.get("tag_name"),
+        "name": data.get("name"),
+        "published_at": data.get("published_at"),
+        "url": data.get("html_url"),
+        "body": data.get("body", "")[:500]  # First 500 chars
+    }
+    
+    with open("searxng_latest_release.json", "w") as f:
+        json.dump(release_info, f, indent=2)
+    
+    print(f"Latest release: {release_info['tag']}")
+    print(f"::set-output name=latest_version::{release_info['tag']}")
+    
+except Exception as e:
+    print(f"Error checking releases: {e}")
+        EOF
+    
+    - name: Check SearXNG documentation updates
+      id: check_docs
+      run: |
+        python << 'EOF'
+import httpx
+import json
+
+try:
+    # Check for recent commits to docs
+    response = httpx.get(
+        "https://api.github.com/repos/searxng/searxng/commits",
+        params={"path": "docs", "per_page": 10},
+        timeout=10.0
+    )
+    response.raise_for_status()
+    commits = response.json()
+    
+    recent_docs_changes = []
+    for commit in commits[:5]:
+        recent_docs_changes.append({
+            "sha": commit["sha"][:7],
+            "message": commit["commit"]["message"].split("\n")[0],
+            "date": commit["commit"]["author"]["date"],
+            "url": commit["html_url"]
+        })
+    
+    with open("searxng_docs_changes.json", "w") as f:
+        json.dump(recent_docs_changes, f, indent=2)
+    
+    print(f"Found {len(recent_docs_changes)} recent doc changes")
+    print(f"::set-output name=docs_changes::{len(recent_docs_changes)}")
+    
+except Exception as e:
+    print(f"Error checking docs: {e}")
+        EOF
+    
+    - name: Generate summary
+      run: |
+        echo "# SearXNG Weekly Update Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Date:** $(date -u +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "## Instance Health Check" >> $GITHUB_STEP_SUMMARY
+        echo "- Healthy: ${{ steps.check_instances.outputs.healthy_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Unhealthy: ${{ steps.check_instances.outputs.unhealthy_count }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f "instance_health.json" ]; then
+          echo "### Instance Status" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("instance_health.json") as f:
+    data = json.load(f)
+print("| Instance | Status | Response Time |")
+print("|----------|--------|---------------|")
+for result in data["results"]:
+    rt = f"{result.get('response_time', 0):.2f}s" if result['status'] == 'healthy' else 'N/A'
+    status = '✅' if result['status'] == 'healthy' else '❌'
+    print(f"| {result['instance']} | {status} | {rt} |")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "searxng_latest_release.json" ]; then
+          echo "## Latest SearXNG Release" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("searxng_latest_release.json") as f:
+    data = json.load(f)
+print(f"- Version: {data['tag']}")
+print(f"- Published: {data['published_at']}")
+print(f"- [View Release]({data['url']})")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "searxng_docs_changes.json" ]; then
+          echo "## Recent Documentation Changes" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("searxng_docs_changes.json") as f:
+    changes = json.load(f)
+print("| Date | Message |")
+print("|------|---------|")
+for change in changes[:5]:
+    date = change['date'].split('T')[0]
+    msg = change['message'][:60]
+    print(f"| {date} | [{msg}]({change['url']}) |")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Create issue if problems detected
+      if: steps.check_instances.outputs.majority_down == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const health = JSON.parse(fs.readFileSync('instance_health.json', 'utf8'));
+          
+          let body = '## ⚠️ SearXNG Instance Health Alert\n\n';
+          body += `**Date:** ${new Date().toISOString().split('T')[0]}\n\n`;
+          body += `Majority of configured SearXNG instances are unhealthy!\n\n`;
+          body += `- Healthy: ${health.healthy}/${health.total}\n`;
+          body += `- Unhealthy: ${health.unhealthy}/${health.total}\n\n`;
+          
+          body += '### Unhealthy Instances\n\n';
+          health.results.filter(r => r.status === 'unhealthy').forEach(r => {
+            body += `- ❌ ${r.instance}\n  - Error: ${r.error}\n`;
+          });
+          
+          body += '\n### Action Required\n';
+          body += '- [ ] Investigate unhealthy instances\n';
+          body += '- [ ] Consider updating default instance list\n';
+          body += '- [ ] Check searx.space for new healthy instances\n';
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `[AUTO] SearXNG Instance Health Alert - ${new Date().toISOString().split('T')[0]}`,
+            body: body,
+            labels: ['searxng', 'automated', 'priority']
+          });
+    
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: searxng-check-results
+        path: |
+          instance_health.json
+          searx_space_instances.json
+          searxng_latest_release.json
+          searxng_docs_changes.json
