@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -19,11 +20,43 @@ from fastapi.staticfiles import StaticFiles
 import httpx
 from pydantic import BaseModel
 
-# Initialize FastAPI app
+
+# Background task
+async def periodic_health_check():
+    """Periodically check instance health and broadcast updates."""
+    while True:
+        try:
+            results = await manager.check_all_instances()
+            await broadcast_health_update({
+                "type": "health_update",
+                "data": results,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except Exception as e:
+            print(f"Health check error: {e}")
+        await asyncio.sleep(30)  # Check every 30 seconds
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for background tasks."""
+    # Startup: start background health checks
+    task = asyncio.create_task(periodic_health_check())
+    yield
+    # Shutdown: cancel background tasks
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title="SearXNG MCP Dashboard",
     description="Professional monitoring dashboard for SearXNG MCP Server",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Store WebSocket connections
@@ -191,22 +224,6 @@ async def broadcast_health_update(data: Dict):
             active_connections.remove(connection)
 
 
-# Background task for periodic health checks
-async def periodic_health_check():
-    """Periodically check instance health and broadcast updates."""
-    while True:
-        try:
-            results = await manager.check_all_instances()
-            await broadcast_health_update({
-                "type": "health_update",
-                "data": results,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-        except Exception as e:
-            print(f"Health check error: {e}")
-        await asyncio.sleep(30)  # Check every 30 seconds
-
-
 # API Endpoints
 @app.get("/")
 async def root():
@@ -280,12 +297,6 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(data)
     except WebSocketDisconnect:
         active_connections.remove(websocket)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks on startup."""
-    asyncio.create_task(periodic_health_check())
 
 
 # Mount static files

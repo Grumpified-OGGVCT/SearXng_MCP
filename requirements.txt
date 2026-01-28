@@ -8,3 +8,9 @@ pydantic>=2.0.0
 
 # Development dependencies (optional)
 # Install with: pip install -r requirements.txt -r requirements-dev.txt
+# Dashboard-specific dependencies
+# Install with: pip install -r requirements-dashboard.txt
+
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+websockets>=11.0

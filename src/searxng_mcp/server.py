@@ -245,13 +245,23 @@ async def search(
         1,
         description="Results page number (1-based)",
     ),
+    ai_enhance: bool = Field(
+        False,
+        description="Enable AI-powered result enhancement using Mistral Large 3. "
+        "Requires SEARXNG_AI_PROVIDER (openrouter/ollama/gemini) and SEARXNG_AI_API_KEY.",
+    ),
 ) -> str:
     """
-    Search using SearXNG metasearch engine across 245+ engines.
+    Search using SearXNG metasearch engine across 245+ engines with optional AI enhancement.
 
     SearXNG aggregates results from multiple search engines including regional and non-English
     engines. Supports bang syntax for engine selection (!go for Google, !gh for GitHub, etc.)
     and language modifiers (:en, :zh, :de, etc.).
+
+    When ai_enhance=True, results are enhanced with:
+    - AI-powered summary (2-3 paragraphs)
+    - Key insights (3-5 bullet points)
+    - Recommended sources (top 3)
 
     Examples:
         - "python asyncio" - General search
@@ -259,6 +269,7 @@ async def search(
         - "machine learning :zh" - Search in Chinese
         - "quantum computing category:science" - Search scientific sources
         - "cat pictures" with categories="images" - Image search
+        - "AI research" with ai_enhance=True - Get AI-enhanced summary
     """
     manager = get_instance_manager()
     try:
@@ -271,6 +282,33 @@ async def search(
             safesearch=safesearch,
             page=page,
         )
+        
+        # Apply AI enhancement if requested
+        if ai_enhance:
+            try:
+                from searxng_mcp.ai_enhancer import get_ai_enhancer
+                
+                enhancer = get_ai_enhancer()
+                if enhancer.is_enabled():
+                    logger.info(f"Applying AI enhancement with provider: {enhancer.provider}")
+                    search_results = results.get("results", [])
+                    enhanced = await enhancer.enhance_results(query, search_results)
+                    results["ai_enhancement"] = enhanced
+                    logger.info("AI enhancement completed successfully")
+                else:
+                    results["ai_enhancement"] = {
+                        "enabled": False,
+                        "message": "AI enhancement requires SEARXNG_AI_PROVIDER and SEARXNG_AI_API_KEY environment variables",
+                        "supported_providers": ["openrouter", "ollama", "gemini"],
+                    }
+            except Exception as e:
+                logger.exception(f"AI enhancement failed: {e}")
+                results["ai_enhancement"] = {
+                    "enabled": False,
+                    "error": str(e),
+                    "message": "AI enhancement failed but search results are still available",
+                }
+        
         return json.dumps(results, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.exception(f"Search failed: {e}")
