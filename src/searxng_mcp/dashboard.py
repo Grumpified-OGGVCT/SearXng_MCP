@@ -31,6 +31,7 @@ except ImportError:
 
 from searxng_mcp.context_manager import InfiniteContextManager
 from searxng_mcp.rtd_manager import RealTimeDataManager
+from searxng_mcp.repl_manager import get_repl_manager
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,14 @@ class ChatMessage(BaseModel):
     category: str = "general"
 
 
+class REPLExecutionRequest(BaseModel):
+    """REPL code execution request model."""
+    
+    code: str = Field(..., min_length=1, max_length=10000)
+    description: str = Field(default="", max_length=500)
+    session_id: Optional[str] = None
+
+
 class ChatSession:
     """Manages a chat session with history and context."""
 
@@ -125,11 +134,14 @@ class ChatSession:
         self.created_at = datetime.utcnow()
         self.last_activity = datetime.utcnow()
         
-        # Initialize infinite context manager
+        # Initialize infinite context manager (legacy)
         self.context_manager = InfiniteContextManager(
             recent_messages_limit=10,
             compression_threshold=15
         )
+        
+        # Initialize RLM REPL manager (revolutionary!)
+        self.repl_manager = get_repl_manager()
 
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
         """Add a message to the session history."""
@@ -140,8 +152,9 @@ class ChatSession:
             "metadata": metadata or {}
         })
         
-        # Add to context manager
+        # Add to both context managers
         self.context_manager.add_message(role, content, metadata)
+        self.repl_manager.add_message(role, content, metadata)
         
         # Keep only last MAX_MESSAGES_PER_SESSION messages
         if len(self.messages) > 100:  # Using hardcoded value for now
@@ -178,7 +191,10 @@ class ChatSession:
     
     def get_context_stats(self) -> Dict[str, Any]:
         """Get context management statistics."""
-        return self.context_manager.get_stats()
+        return {
+            'legacy_context': self.context_manager.get_stats(),
+            'repl_stats': self.repl_manager.get_stats()
+        }
 
 
 class DashboardManager:
@@ -623,6 +639,88 @@ async def chat_endpoint(message: ChatMessage):
         message.category
     )
     return result
+
+
+@app.post("/api/repl/execute")
+async def repl_execute_endpoint(request: REPLExecutionRequest):
+    """
+    Execute code in REPL environment.
+    
+    This is the revolutionary RLM REPL system that enables:
+    - LLM-generated code for context navigation
+    - Recursive sub-LLM calls
+    - Semantic search and aggregation
+    - Zero information loss with infinite context
+    """
+    session = manager.get_or_create_session(request.session_id)
+    
+    try:
+        result = session.repl_manager.execute_code(
+            request.code,
+            request.description
+        )
+        return {
+            "status": "success",
+            "result": result
+        }
+    except Exception as e:
+        logger.error(f"REPL execution error: {e}", exc_info=True)
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
+
+@app.get("/api/repl/context/{session_id}")
+async def repl_get_context(session_id: str):
+    """Get REPL context for a session."""
+    session = manager.chat_sessions.get(session_id)
+    if not session:
+        return {"status": "error", "error": "Session not found"}
+    
+    return {
+        "status": "success",
+        "context": session.repl_manager.get_context()
+    }
+
+
+@app.get("/api/repl/stats/{session_id}")
+async def repl_get_stats(session_id: str):
+    """Get REPL execution statistics."""
+    session = manager.chat_sessions.get(session_id)
+    if not session:
+        return {"status": "error", "error": "Session not found"}
+    
+    return {
+        "status": "success",
+        "stats": session.repl_manager.get_stats()
+    }
+
+
+@app.post("/api/repl/generate-code")
+async def repl_generate_code(request: dict):
+    """
+    Generate Python code for a natural language query.
+    This is where LLM would generate navigation code.
+    """
+    session_id = request.get("session_id")
+    query = request.get("query", "")
+    
+    session = manager.get_or_create_session(session_id)
+    
+    try:
+        code = session.repl_manager.generate_navigation_code(query)
+        return {
+            "status": "success",
+            "code": code,
+            "description": f"Generated code for: {query}"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 @app.websocket("/ws/chat")
