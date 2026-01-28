@@ -242,6 +242,51 @@
             margin-top: 0.25rem;
         }
 
+        .result-meta {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .freshness-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-weight: 600;
+            font-size: 0.7rem;
+            display: inline-block;
+        }
+
+        .freshness-live {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .freshness-fresh {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+        }
+
+        .freshness-recent {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .freshness-stale {
+            background: rgba(156, 163, 175, 0.2);
+            color: #9ca3af;
+        }
+
+        .freshness-old {
+            background: rgba(107, 114, 128, 0.2);
+            color: #6b7280;
+        }
+
+        .result-timestamp {
+            color: var(--text-dim);
+        }
+
         /* Input Area */
         .input-area {
             padding: 1.5rem;
@@ -788,6 +833,96 @@
                 </div>
             </section>
 
+            <!-- Context Manager Panel -->
+            <section class="panel-section">
+                <div class="panel-header" onclick="togglePanel('contextStats')">
+                    <h3 class="panel-title">🧠 Context Manager</h3>
+                    <span class="panel-toggle" id="contextStatsToggle">▼</span>
+                </div>
+                <div class="panel-content" id="contextStatsContent">
+                    <div id="contextStatsList">
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Conversation Turns</span>
+                                <span id="contextTurns">0</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Total Messages</span>
+                                <span id="contextMessages">0</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Compressed Blocks</span>
+                                <span id="contextBlocks">0</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Compression Ratio</span>
+                                <span id="contextCompression">0%</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Tokens Saved</span>
+                                <span id="contextTokensSaved">0</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Key Facts Tracked</span>
+                                <span id="contextFacts">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RTD Status Panel -->
+            <section class="panel-section">
+                <div class="panel-header" onclick="togglePanel('rtdStatus')">
+                    <h3 class="panel-title">⚡ Real-Time Data</h3>
+                    <span class="panel-toggle" id="rtdStatusToggle">▼</span>
+                </div>
+                <div class="panel-content" id="rtdStatusContent">
+                    <div id="rtdStatusList">
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Time-Sensitive</span>
+                                <span id="rtdTimeSensitive">No</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Average Freshness</span>
+                                <span id="rtdFreshness">N/A</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Overall Status</span>
+                                <span id="rtdOverallStatus">N/A</span>
+                            </div>
+                        </div>
+                        <div class="model-item">
+                            <div class="model-label">
+                                <span>Refresh Interval</span>
+                                <span id="rtdRefreshInterval">N/A</span>
+                            </div>
+                        </div>
+                        <div class="model-item" id="rtdAutoRefreshItem" style="display: none;">
+                            <div class="model-label">
+                                <span>Next Refresh</span>
+                                <span id="rtdNextRefresh">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Inner Monologue Panel -->
             <section class="panel-section">
                 <div class="panel-header" onclick="togglePanel('monologue')">
@@ -929,6 +1064,12 @@
                     break;
                 case 'user_model_update':
                     updateUserModel(content);
+                    break;
+                case 'context_stats':
+                    updateContextStats(content);
+                    break;
+                case 'rtd_status':
+                    updateRTDStatus(content);
                     break;
                 case 'error':
                     addErrorMessage(content);
@@ -1080,12 +1221,21 @@
             resultsHtml += '<div class="search-results">';
             
             results.slice(0, 5).forEach(result => {
+                const freshness = result.freshness || {};
+                const badge = freshness.badge || '';
+                const ageDisplay = freshness.age_display || 'Unknown age';
+                const freshnessClass = freshness.status ? `freshness-${freshness.status}` : '';
+                
                 resultsHtml += `
                     <div class="search-result-item">
                         <a href="${escapeHtml(result.url)}" target="_blank" class="result-title">
                             ${escapeHtml(result.title)}
                         </a>
                         <div class="result-snippet">${escapeHtml(result.content || '')}</div>
+                        <div class="result-meta">
+                            ${badge ? `<span class="freshness-badge ${freshnessClass}">${badge}</span>` : ''}
+                            <span class="result-timestamp">${ageDisplay}</span>
+                        </div>
                         <div class="result-url">${escapeHtml(result.url)}</div>
                     </div>
                 `;
@@ -1166,6 +1316,71 @@
                 `;
                 list.appendChild(item);
             });
+        }
+
+        function updateContextStats(stats) {
+            document.getElementById('contextTurns').textContent = stats.conversation_turns || 0;
+            document.getElementById('contextMessages').textContent = stats.total_messages || 0;
+            document.getElementById('contextBlocks').textContent = stats.compressed_blocks || 0;
+            document.getElementById('contextCompression').textContent = (stats.compression_ratio || 0) + '%';
+            document.getElementById('contextTokensSaved').textContent = stats.tokens_saved || 0;
+            document.getElementById('contextFacts').textContent = stats.key_facts || 0;
+        }
+
+        let rtdAutoRefreshTimer = null;
+        let rtdRefreshInterval = null;
+
+        function updateRTDStatus(rtd) {
+            const timeSensitive = rtd.is_time_sensitive ? 'Yes ⚡' : 'No';
+            document.getElementById('rtdTimeSensitive').textContent = timeSensitive;
+            
+            const freshness = rtd.average_freshness !== undefined ? rtd.average_freshness.toFixed(1) + '%' : 'N/A';
+            document.getElementById('rtdFreshness').textContent = freshness;
+            
+            const status = rtd.overall_status || 'N/A';
+            document.getElementById('rtdOverallStatus').textContent = status.toUpperCase();
+            
+            const interval = rtd.refresh_interval_display || 'N/A';
+            document.getElementById('rtdRefreshInterval').textContent = interval;
+
+            // Handle auto-refresh countdown
+            const autoRefreshItem = document.getElementById('rtdAutoRefreshItem');
+            if (rtd.auto_refresh_enabled && rtd.next_refresh_in) {
+                autoRefreshItem.style.display = 'block';
+                startRefreshCountdown(rtd.next_refresh_in);
+            } else {
+                autoRefreshItem.style.display = 'none';
+                if (rtdAutoRefreshTimer) {
+                    clearInterval(rtdAutoRefreshTimer);
+                    rtdAutoRefreshTimer = null;
+                }
+            }
+        }
+
+        function startRefreshCountdown(seconds) {
+            if (rtdAutoRefreshTimer) {
+                clearInterval(rtdAutoRefreshTimer);
+            }
+
+            rtdRefreshInterval = seconds;
+            let remaining = seconds;
+
+            rtdAutoRefreshTimer = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    document.getElementById('rtdNextRefresh').textContent = 'Refreshing...';
+                    clearInterval(rtdAutoRefreshTimer);
+                    rtdAutoRefreshTimer = null;
+                } else {
+                    const mins = Math.floor(remaining / 60);
+                    const secs = remaining % 60;
+                    if (mins > 0) {
+                        document.getElementById('rtdNextRefresh').textContent = `${mins}m ${secs}s`;
+                    } else {
+                        document.getElementById('rtdNextRefresh').textContent = `${secs}s`;
+                    }
+                }
+            }, 1000);
         }
 
         function scrollToBottom() {

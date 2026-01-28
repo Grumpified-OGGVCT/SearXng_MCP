@@ -29,6 +29,9 @@ try:
 except ImportError:
     AI_AVAILABLE = False
 
+from searxng_mcp.context_manager import InfiniteContextManager
+from searxng_mcp.rtd_manager import RealTimeDataManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,6 +124,12 @@ class ChatSession:
         }
         self.created_at = datetime.utcnow()
         self.last_activity = datetime.utcnow()
+        
+        # Initialize infinite context manager
+        self.context_manager = InfiniteContextManager(
+            recent_messages_limit=10,
+            compression_threshold=15
+        )
 
     def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
         """Add a message to the session history."""
@@ -130,6 +139,10 @@ class ChatSession:
             "timestamp": datetime.utcnow().isoformat(),
             "metadata": metadata or {}
         })
+        
+        # Add to context manager
+        self.context_manager.add_message(role, content, metadata)
+        
         # Keep only last MAX_MESSAGES_PER_SESSION messages
         if len(self.messages) > 100:  # Using hardcoded value for now
             self.messages = self.messages[-100:]
@@ -159,8 +172,13 @@ class ChatSession:
 
     def get_context(self) -> str:
         """Get conversation context for AI."""
-        context_messages = self.messages[-5:]  # Last 5 messages
-        return "\n".join([f"{msg['role']}: {msg['content']}" for msg in context_messages])
+        # Use infinite context manager for optimized context
+        context = self.context_manager.get_context(max_tokens=2000)
+        return self.context_manager.format_for_model(context)
+    
+    def get_context_stats(self) -> Dict[str, Any]:
+        """Get context management statistics."""
+        return self.context_manager.get_stats()
 
 
 class DashboardManager:
@@ -180,6 +198,9 @@ class DashboardManager:
         self.chat_sessions: Dict[str, ChatSession] = {}
         self.ai_enhancer = get_ai_enhancer() if AI_AVAILABLE else None
         self._cleanup_task = None  # Will be started by lifespan
+        
+        # Initialize RTD manager
+        self.rtd_manager = RealTimeDataManager()
 
     def load_config(self):
         """Load configuration from environment."""
@@ -347,12 +368,17 @@ class DashboardManager:
             "ai_summary": None,
             "response": None,
             "goals": session.goals,
-            "user_model": session.user_model
+            "user_model": session.user_model,
+            "context_stats": None,
+            "rtd_status": None
         }
 
         try:
             # Add user message to history
             session.add_message("user", message)
+            
+            # Get context stats
+            response["context_stats"] = session.get_context_stats()
 
             # Update goals based on message
             session.update_goal("Understanding user intent", 75)
@@ -379,6 +405,16 @@ class DashboardManager:
 
             # Extract results
             results = search_result.get("results", [])
+            
+            # Calculate RTD status and freshness for results
+            rtd_status = self.rtd_manager.get_rtd_status(message, results, category)
+            response["rtd_status"] = rtd_status
+            
+            # Add freshness info to each result
+            for i, result in enumerate(results):
+                freshness = self.rtd_manager.calculate_freshness(result)
+                result["freshness"] = freshness
+            
             response["search_results"] = results[:10]
 
             # Update goals
@@ -522,6 +558,43 @@ async def get_stats():
     }
 
 
+@app.get("/api/context/stats")
+async def get_context_stats():
+    """Get context management statistics for all active sessions."""
+    stats = {
+        "total_sessions": len(manager.chat_sessions),
+        "sessions": {}
+    }
+    
+    for session_id, session in manager.chat_sessions.items():
+        stats["sessions"][session_id] = session.get_context_stats()
+    
+    return stats
+
+
+@app.get("/api/rtd/status")
+async def get_rtd_status():
+    """Get RTD manager status and capabilities."""
+    return {
+        "enabled": True,
+        "freshness_thresholds": {
+            "live": "< 1 minute",
+            "fresh": "< 1 hour",
+            "recent": "< 1 day",
+            "stale": "< 1 week",
+            "old": "> 1 week"
+        },
+        "refresh_intervals": {
+            "live": "30 seconds",
+            "dynamic": "5 minutes",
+            "regular": "15 minutes",
+            "static": "1 hour"
+        },
+        "time_sensitive_keywords": manager.rtd_manager.TIME_SENSITIVE_KEYWORDS[:10],
+        "high_freshness_categories": manager.rtd_manager.HIGH_FRESHNESS_CATEGORIES
+    }
+
+
 @app.post("/api/search")
 async def test_search(request: SearchRequest):
     """Test search on first available instance."""
@@ -610,6 +683,20 @@ async def chat_websocket(websocket: WebSocket):
                     await websocket.send_json({
                         "type": "monologue",
                         "content": f"Found {len(result['search_results'])} relevant sources"
+                    })
+                
+                # Send context stats
+                if result.get("context_stats"):
+                    await websocket.send_json({
+                        "type": "context_stats",
+                        "content": result["context_stats"]
+                    })
+                
+                # Send RTD status
+                if result.get("rtd_status"):
+                    await websocket.send_json({
+                        "type": "rtd_status",
+                        "content": result["rtd_status"]
                     })
                 
                 # Send goals update
