@@ -16,7 +16,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 ## Features
 
 ### Core Search
-- 🌐 **Multi-Instance Resilience**: Automatic fallover across public SearXNG instances with optional local instance support
+- 🌐 **Multi-Instance Resilience**: Automatic failover across public SearXNG instances with optional local instance support
 - 🌍 **Global Reach**: Support for 245+ engines including regional and non-English engines (Baidu, Yandex, Naver, etc.)
 - 🎯 **Advanced Search**: Bang syntax (!go, !gh), language modifiers (:en, :zh), and 10 specialized categories
 - 🍪 **Preference Persistence**: Cookie-based session management to maintain user preferences across searches

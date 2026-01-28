@@ -2,7 +2,10 @@
 AI-Powered Search Enhancement Module
 
 Provides intelligent scraping, summarization, and presentation of search results
-using Mistral Large 3 via OpenRouter or Ollama Cloud.
+using state-of-the-art language models via multiple providers:
+- OpenRouter (Mistral Large 2512)
+- Ollama Cloud (Mistral Large 3)
+- Google Gemini (auto-detected latest Flash model)
 """
 
 import json
@@ -16,7 +19,14 @@ except ImportError:
 
 
 class AIEnhancer:
-    """AI-powered search result enhancement using Mistral Large 3."""
+    """
+    AI-powered search result enhancement using multiple LLM providers.
+    
+    Supports:
+    - OpenRouter: mistralai/mistral-large-2512
+    - Ollama Cloud: mistral-large-3:675b-cloud
+    - Google Gemini: Auto-detected latest Flash model
+    """
 
     def __init__(self):
         """Initialize AI enhancer with configuration."""
@@ -74,7 +84,7 @@ class AIEnhancer:
         Returns the latest available Flash model or falls back to known default.
         Checks Google's model list API for the newest gemini-*-flash model.
         """
-        default_model = "gemini-2.0-flash-exp"  # Current latest as of Jan 2026
+        default_model = "gemini-2.0-flash-exp"  # Fallback model (Jan 2026)
         
         if not self.api_key or httpx is None:
             return default_model
@@ -106,11 +116,19 @@ class AIEnhancer:
                     # Return the first (most recent) flash model found
                     if flash_models:
                         return flash_models[0]
+                else:
+                    # Log non-200 responses for debugging
+                    import logging
+                    logging.warning(
+                        f"Gemini model detection failed with status {response.status_code}, "
+                        f"using fallback model {default_model}"
+                    )
                         
         except Exception as e:
             # Log but don't fail - just use default
+            # Don't log exception details to avoid exposing API key
             import logging
-            logging.debug(f"Could not auto-detect Gemini model: {e}")
+            logging.debug(f"Could not auto-detect Gemini model, using fallback: {default_model}")
             
         return default_model
 
