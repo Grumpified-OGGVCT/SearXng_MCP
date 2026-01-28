@@ -13,6 +13,7 @@ Guides users through configuration choices including:
 import os
 import platform
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -405,6 +406,176 @@ Docker is recommended for all platforms:
 https://docs.searxng.org/admin/installation-docker.html
         """)
 
+    def configure_ai_enhancement(self):
+        """Configure AI-powered search enhancement."""
+        self.print_section("AI-Powered Search Enhancement (Optional)")
+        
+        self.print_info("SearXNG MCP can enhance search results with AI summaries.")
+        self.print_info("This provides:")
+        self.print_info("  • Comprehensive 3-5 paragraph analysis")
+        self.print_info("  • 5-7 detailed key insights")
+        self.print_info("  • Source recommendations")
+        self.print_info("  • Takes 6-18 seconds per search")
+        print()
+        
+        enable_ai = self.prompt_yes_no(
+            "Enable AI-powered enhancement?", default=False
+        )
+        
+        if not enable_ai:
+            self.config["ai_enabled"] = False
+            self.print_info("AI enhancement disabled. You can enable it later.")
+            return
+        
+        self.config["ai_enabled"] = True
+        
+        # Choose provider
+        self.print_info("\nAvailable AI providers:")
+        print()
+        
+        providers = [
+            (
+                "OpenRouter",
+                "Most reliable. Model: google/gemini-2.0-flash-exp\n     Get free API key: https://openrouter.ai/keys",
+            ),
+            (
+                "Ollama Cloud",
+                "Newest model. Model: gemini-3-flash-preview:cloud\n     Get API key: https://ollama.com/settings/keys",
+            ),
+            (
+                "Google Gemini",
+                "Direct from Google. Auto-detects latest Flash model\n     Get API key: https://aistudio.google.com/app/apikey",
+            ),
+        ]
+        
+        choice = self.prompt_choice(
+            "Select your AI provider:", providers, default=0
+        )
+        
+        provider_map = {
+            0: "openrouter",
+            1: "ollama",
+            2: "gemini",
+        }
+        
+        provider = provider_map[choice]
+        self.config["ai_provider"] = provider
+        self.print_success(f"Selected: {providers[choice][0]}")
+        print()
+        
+        # Get API key
+        self.print_info(f"You'll need an API key from {providers[choice][0]}")
+        self.print_info(f"Get it here: {providers[choice][1].split('Get')[1].strip() if 'https://' in providers[choice][1] else 'See documentation'}")
+        print()
+        
+        api_key = self.prompt(f"Enter your {providers[choice][0]} API key", "")
+        
+        if api_key:
+            self.config["ai_api_key"] = api_key
+            self.print_success("API key saved!")
+            
+            # Test connection
+            test = self.prompt_yes_no(
+                "Test AI connection now?", default=True
+            )
+            if test:
+                self.test_ai_connection(provider, api_key)
+        else:
+            self.print_warning("No API key provided. AI enhancement will be disabled.")
+            self.config["ai_enabled"] = False
+    
+    def test_ai_connection(self, provider: str, api_key: str):
+        """Test AI provider connection."""
+        self.print_info(f"Testing {provider} connection...")
+        
+        try:
+            import httpx
+            
+            # Simple connectivity test based on provider
+            if provider == "openrouter":
+                response = httpx.get(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10.0
+                )
+            elif provider == "ollama":
+                response = httpx.get(
+                    "https://ollama.com/api/tags",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10.0
+                )
+            elif provider == "gemini":
+                response = httpx.get(
+                    f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                    timeout=10.0
+                )
+            
+            if response.status_code == 200:
+                self.print_success("✓ AI provider connection successful!")
+            else:
+                self.print_warning(f"Connection returned status {response.status_code}")
+                self.print_warning("Please verify your API key is correct")
+                
+        except ImportError:
+            self.print_warning("httpx not installed, skipping connection test")
+        except Exception as e:
+            self.print_error(f"Connection test failed: {e}")
+            self.print_warning("Please verify your API key is correct")
+    
+    def configure_privacy_settings(self):
+        """Configure privacy and tracking preferences."""
+        self.print_section("Privacy & Tracking Settings")
+        
+        self.print_info("SearXNG MCP can collect usage metrics for:")
+        self.print_info("  • Monitoring performance and errors")
+        self.print_info("  • Tracking API costs and usage")
+        self.print_info("  • Improving service reliability")
+        print()
+        self.print_info(self.color("IMPORTANT:", Colors.BOLD) + " What is tracked:")
+        self.print_info("  ✓ Request counts and categories")
+        self.print_info("  ✓ Response times and success rates")
+        self.print_info("  ✓ Cost estimates for AI usage")
+        self.print_info("  ✓ Error types (NO error details)")
+        print()
+        self.print_info(self.color("NOT tracked:", Colors.BOLD))
+        self.print_info("  ✗ Your actual search queries")
+        self.print_info("  ✗ Search results or content")
+        self.print_info("  ✗ Personal information")
+        self.print_info("  ✗ IP addresses or identifiers")
+        print()
+        self.print_info("All data stays LOCAL on your machine (no cloud upload).")
+        print()
+        
+        enable_metrics = self.prompt_yes_no(
+            "Enable usage metrics collection?", default=True
+        )
+        
+        if enable_metrics:
+            self.config["metrics_enabled"] = True
+            self.print_success("✓ Metrics enabled (stored locally in ~/.searxng_mcp/metrics)")
+            print()
+            
+            # Ask about query logging separately
+            self.print_info("For debugging, partial query text can be logged (first 50 chars only).")
+            log_queries = self.prompt_yes_no(
+                "Enable partial query logging for debugging?", default=False
+            )
+            self.config["log_queries"] = log_queries
+            
+            if log_queries:
+                self.print_warning("⚠ Partial queries will be logged locally for debugging")
+            else:
+                self.print_success("✓ Query logging disabled (maximum privacy)")
+        else:
+            self.config["metrics_enabled"] = False
+            self.config["log_queries"] = False
+            self.print_success("✓ All tracking disabled (maximum privacy)")
+        
+        print()
+        self.print_info("You can change these settings anytime in your .env file:")
+        self.print_info("  SEARXNG_METRICS_ENABLED=true/false")
+        self.print_info("  SEARXNG_LOG_QUERIES=true/false")
+    
     def configure_advanced_settings(self):
         """Configure advanced settings."""
         self.print_section("Advanced Settings (Optional)")
@@ -454,7 +625,9 @@ https://docs.searxng.org/admin/installation-docker.html
         lines = [
             "# SearXNG MCP Server Configuration",
             "# Generated by setup wizard",
+            f"# Created: {time.strftime('%Y-%m-%d %H:%M:%S')}",
             "",
+            "# ===== SearXNG Instances =====",
         ]
 
         # Instance configuration
@@ -472,6 +645,38 @@ https://docs.searxng.org/admin/installation-docker.html
         if "local_timeout" in self.config:
             lines.append(f"SEARXNG_LOCAL_TIMEOUT={self.config['local_timeout']}")
 
+        lines.append("")
+        
+        # AI Enhancement configuration
+        lines.append("# ===== AI Enhancement (Optional) =====")
+        if self.config.get("ai_enabled"):
+            lines.append(f"SEARXNG_AI_PROVIDER={self.config['ai_provider']}")
+            lines.append(f"SEARXNG_AI_API_KEY={self.config['ai_api_key']}")
+            
+            # Add model info based on provider
+            if self.config['ai_provider'] == "openrouter":
+                lines.append("# SEARXNG_AI_MODEL=google/gemini-2.0-flash-exp  # Default")
+            elif self.config['ai_provider'] == "ollama":
+                lines.append("# SEARXNG_AI_MODEL=gemini-3-flash-preview:cloud  # Default")
+            elif self.config['ai_provider'] == "gemini":
+                lines.append("# SEARXNG_AI_MODEL=gemini-2.0-flash-exp  # Auto-detected")
+        else:
+            lines.append("# SEARXNG_AI_PROVIDER=openrouter  # Options: openrouter, ollama, gemini")
+            lines.append("# SEARXNG_AI_API_KEY=your_api_key_here")
+            lines.append("# SEARXNG_AI_MODEL=  # Leave empty for provider defaults")
+        
+        lines.append("")
+        
+        # Privacy configuration
+        lines.append("# ===== Privacy & Metrics =====")
+        metrics_enabled = self.config.get("metrics_enabled", True)
+        log_queries = self.config.get("log_queries", False)
+        
+        lines.append(f"SEARXNG_METRICS_ENABLED={'true' if metrics_enabled else 'false'}")
+        lines.append(f"SEARXNG_LOG_QUERIES={'true' if log_queries else 'false'}")
+        lines.append("# Metrics are stored locally in ~/.searxng_mcp/metrics")
+        lines.append("# No data is uploaded to any server")
+        
         lines.append("")
 
         # Write file
@@ -533,6 +738,12 @@ https://docs.searxng.org/admin/installation-docker.html
 
             if strategy in ["local_only", "local_online"]:
                 self.configure_local_instance()
+
+            # NEW: AI Enhancement configuration
+            self.configure_ai_enhancement()
+            
+            # NEW: Privacy settings
+            self.configure_privacy_settings()
 
             self.configure_advanced_settings()
             self.generate_env_file()
