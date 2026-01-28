@@ -9,15 +9,19 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io) 2.0 server tha
 [![MCP](https://img.shields.io/badge/MCP-2.0-green.svg)](https://modelcontextprotocol.io)
 [![FastMCP](https://img.shields.io/badge/FastMCP-latest-orange.svg)](https://github.com/jlowin/fastmcp)
 
-> **Quick Start:** `./install.sh` (Unix) or `install.bat` (Windows) → `./run.sh` or `run.bat`  
-> **Full Guide:** [INSTALL.md](INSTALL.md) | **Quick Guide:** [QUICKSTART.md](QUICKSTART.md)
+> **Quick Start:** `python setup.py` (interactive wizard) or `./install.sh` (Unix) / `install.bat` (Windows)  
+> **Dashboard:** `python -m searxng_mcp.dashboard` (http://localhost:8765)  
+> **Full Guide:** [INSTALL.md](INSTALL.md) | **Dashboard Guide:** [DASHBOARD.md](DASHBOARD.md)
 
 ## Features
 
+- 🧙 **Interactive Setup Wizard**: Guided terminal wizard for easy configuration
+- 🎨 **Professional Web Dashboard**: Real-time monitoring with dark theme
 - 🌐 **Multi-Instance Resilience**: Automatic fallback across public SearXNG instances with optional local instance support
 - 🍪 **Preference Persistence**: Cookie-based session management to maintain user preferences across searches
 - 🌍 **Global Reach**: Support for 245+ engines including regional and non-English engines (Baidu, Yandex, Naver, etc.)
 - 🎯 **Advanced Search**: Bang syntax (!go, !gh), language modifiers (:en, :zh), and 10 specialized categories
+- 🏥 **Health Monitoring**: CLI tool and API for instance health checking
 - 🔒 **Privacy-Focused**: No tracking, respects SearXNG's privacy principles and MCP security guidelines
 - ⚡ **FastMCP Integration**: Built with FastMCP for automatic schema generation and transport flexibility
 
