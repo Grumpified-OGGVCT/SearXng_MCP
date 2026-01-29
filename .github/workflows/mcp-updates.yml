@@ -1,0 +1,382 @@
+name: Weekly MCP Protocol Update Check
+
+on:
+  schedule:
+    # Run every Wednesday at 10:00 AM UTC
+    - cron: '0 10 * * 3'
+  workflow_dispatch:
+
+jobs:
+  check-mcp-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    
+    - name: Install dependencies
+      run: |
+        pip install httpx beautifulsoup4 packaging
+    
+    - name: Check MCP specification updates
+      id: check_mcp_spec
+      run: |
+        python << 'EOF'
+import httpx
+import json
+from datetime import datetime, timedelta
+
+try:
+    # Check MCP GitHub repo for recent activity
+    response = httpx.get(
+        "https://api.github.com/repos/modelcontextprotocol/specification/commits",
+        params={"per_page": 20},
+        timeout=10.0
+    )
+    response.raise_for_status()
+    commits = response.json()
+    
+    # Get commits from last 7 days
+    cutoff_date = datetime.utcnow() - timedelta(days=7)
+    recent_commits = []
+    
+    for commit in commits:
+        commit_date = datetime.fromisoformat(
+            commit["commit"]["author"]["date"].replace("Z", "+00:00")
+        )
+        if commit_date > cutoff_date:
+            recent_commits.append({
+                "sha": commit["sha"][:7],
+                "message": commit["commit"]["message"].split("\n")[0],
+                "date": commit["commit"]["author"]["date"],
+                "url": commit["html_url"]
+            })
+    
+    with open("mcp_spec_commits.json", "w") as f:
+        json.dump(recent_commits, f, indent=2)
+    
+    print(f"Found {len(recent_commits)} commits in last 7 days")
+    print(f"::set-output name=recent_commits::{len(recent_commits)}")
+    
+    if len(recent_commits) > 0:
+        print("::set-output name=has_updates::true")
+    else:
+        print("::set-output name=has_updates::false")
+    
+except Exception as e:
+    print(f"Error checking MCP spec: {e}")
+    print("::set-output name=has_updates::false")
+        EOF
+    
+    - name: Check MCP specification releases
+      id: check_mcp_releases
+      run: |
+        python << 'EOF'
+import httpx
+import json
+import re
+from packaging import version as pkg_version
+
+try:
+    # Check for latest release
+    response = httpx.get(
+        "https://api.github.com/repos/modelcontextprotocol/specification/releases/latest",
+        timeout=10.0
+    )
+    response.raise_for_status()
+    data = response.json()
+    
+    release_info = {
+        "tag": data.get("tag_name"),
+        "name": data.get("name"),
+        "published_at": data.get("published_at"),
+        "url": data.get("html_url"),
+        "body": data.get("body", "")
+    }
+    
+    with open("mcp_latest_release.json", "w") as f:
+        json.dump(release_info, f, indent=2)
+    
+    print(f"Latest MCP release: {release_info['tag']}")
+    print(f"::set-output name=latest_version::{release_info['tag']}")
+    
+    # Check if it's a recent release (within 7 days)
+    from datetime import datetime, timedelta
+    pub_date = datetime.fromisoformat(release_info['published_at'].replace("Z", "+00:00"))
+    if datetime.utcnow().replace(tzinfo=pub_date.tzinfo) - pub_date < timedelta(days=7):
+        print("::set-output name=new_release::true")
+    else:
+        print("::set-output name=new_release::false")
+    
+except Exception as e:
+    print(f"Error checking MCP releases: {e}")
+    print("::set-output name=new_release::false")
+        EOF
+    
+    - name: Check FastMCP repository updates
+      id: check_fastmcp_repo
+      run: |
+        python << 'EOF'
+import httpx
+import json
+from datetime import datetime, timedelta
+
+try:
+    # Check FastMCP repo for recent activity
+    response = httpx.get(
+        "https://api.github.com/repos/jlowin/fastmcp/commits",
+        params={"per_page": 20},
+        timeout=10.0
+    )
+    response.raise_for_status()
+    commits = response.json()
+    
+    cutoff_date = datetime.utcnow() - timedelta(days=7)
+    recent_commits = []
+    
+    for commit in commits:
+        commit_date = datetime.fromisoformat(
+            commit["commit"]["author"]["date"].replace("Z", "+00:00")
+        )
+        if commit_date > cutoff_date:
+            recent_commits.append({
+                "sha": commit["sha"][:7],
+                "message": commit["commit"]["message"].split("\n")[0],
+                "date": commit["commit"]["author"]["date"],
+                "url": commit["html_url"]
+            })
+    
+    with open("fastmcp_commits.json", "w") as f:
+        json.dump(recent_commits, f, indent=2)
+    
+    print(f"Found {len(recent_commits)} FastMCP commits in last 7 days")
+    print(f"::set-output name=fastmcp_commits::{len(recent_commits)}")
+    
+except Exception as e:
+    print(f"Error checking FastMCP: {e}")
+        EOF
+    
+    - name: Check MCP ecosystem projects
+      id: check_mcp_ecosystem
+      run: |
+        python << 'EOF'
+import httpx
+import json
+
+# List of MCP-related repositories to monitor
+MCP_REPOS = [
+    "modelcontextprotocol/servers",
+    "modelcontextprotocol/typescript-sdk",
+    "modelcontextprotocol/python-sdk",
+]
+
+ecosystem_updates = []
+
+for repo in MCP_REPOS:
+    try:
+        # Get latest release
+        response = httpx.get(
+            f"https://api.github.com/repos/{repo}/releases/latest",
+            timeout=10.0
+        )
+        if response.status_code == 200:
+            data = response.json()
+            ecosystem_updates.append({
+                "repo": repo,
+                "version": data.get("tag_name"),
+                "published_at": data.get("published_at"),
+                "url": data.get("html_url")
+            })
+    except Exception as e:
+        print(f"Error checking {repo}: {e}")
+
+with open("mcp_ecosystem.json", "w") as f:
+    json.dump(ecosystem_updates, f, indent=2)
+
+print(f"Checked {len(MCP_REPOS)} ecosystem projects")
+        EOF
+    
+    - name: Check for breaking changes in MCP spec
+      id: check_breaking
+      run: |
+        python << 'EOF'
+import json
+import re
+
+breaking_changes = []
+
+if open("mcp_spec_commits.json").read().strip():
+    with open("mcp_spec_commits.json") as f:
+        commits = json.load(f)
+    
+    # Look for breaking change indicators
+    breaking_keywords = ["BREAKING", "breaking change", "major:", "!:"]
+    
+    for commit in commits:
+        msg = commit["message"]
+        if any(keyword.lower() in msg.lower() for keyword in breaking_keywords):
+            breaking_changes.append(commit)
+    
+    with open("breaking_changes.json", "w") as f:
+        json.dump(breaking_changes, f, indent=2)
+    
+    if breaking_changes:
+        print(f"::set-output name=breaking_found::true")
+        print(f"Found {len(breaking_changes)} potential breaking changes")
+    else:
+        print(f"::set-output name=breaking_found::false")
+else:
+    print(f"::set-output name=breaking_found::false")
+        EOF
+    
+    - name: Generate summary
+      run: |
+        echo "# MCP Protocol Weekly Update Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Date:** $(date -u +%Y-%m-%d)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f "mcp_latest_release.json" ]; then
+          echo "## MCP Specification" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("mcp_latest_release.json") as f:
+    data = json.load(f)
+print(f"- Latest Version: {data['tag']}")
+print(f"- Published: {data['published_at'].split('T')[0]}")
+print(f"- [View Release]({data['url']})")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ steps.check_mcp_spec.outputs.recent_commits }}" != "0" ]; then
+          echo "## Recent Specification Commits" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("mcp_spec_commits.json") as f:
+    commits = json.load(f)
+print("| Date | Message |")
+print("|------|---------|")
+for commit in commits[:10]:
+    date = commit['date'].split('T')[0]
+    msg = commit['message'][:60]
+    print(f"| {date} | [{msg}]({commit['url']}) |")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ "${{ steps.check_fastmcp_repo.outputs.fastmcp_commits }}" != "0" ]; then
+          echo "## Recent FastMCP Updates" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("fastmcp_commits.json") as f:
+    commits = json.load(f)
+print(f"FastMCP had {len(commits)} commits in the last 7 days")
+print("")
+print("| Date | Message |")
+print("|------|---------|")
+for commit in commits[:5]:
+    date = commit['date'].split('T')[0]
+    msg = commit['message'][:60]
+    print(f"| {date} | [{msg}]({commit['url']}) |")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        if [ -f "mcp_ecosystem.json" ]; then
+          echo "## MCP Ecosystem Projects" >> $GITHUB_STEP_SUMMARY
+          python << 'EOF'
+import json
+with open("mcp_ecosystem.json") as f:
+    projects = json.load(f)
+print("| Project | Version | Published |")
+print("|---------|---------|-----------|")
+for proj in projects:
+    date = proj['published_at'].split('T')[0] if proj.get('published_at') else 'N/A'
+    print(f"| {proj['repo']} | {proj['version']} | {date} |")
+          EOF
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+    
+    - name: Create issue for breaking changes
+      if: steps.check_breaking.outputs.breaking_found == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const breaking = JSON.parse(fs.readFileSync('breaking_changes.json', 'utf8'));
+          
+          let body = '## ⚠️ MCP Protocol Breaking Changes Detected\n\n';
+          body += `**Date:** ${new Date().toISOString().split('T')[0]}\n\n`;
+          body += 'Potential breaking changes detected in the MCP specification!\n\n';
+          
+          body += '### Breaking Changes\n\n';
+          breaking.forEach(commit => {
+            body += `- [${commit.message}](${commit.url})\n`;
+            body += `  - Date: ${commit.date.split('T')[0]}\n`;
+          });
+          
+          body += '\n### Action Required\n';
+          body += '- [ ] Review changes in specification\n';
+          body += '- [ ] Test compatibility with current implementation\n';
+          body += '- [ ] Update code if necessary\n';
+          body += '- [ ] Update documentation\n';
+          body += '- [ ] Bump version if breaking changes adopted\n';
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `[AUTO] MCP Protocol Breaking Changes - ${new Date().toISOString().split('T')[0]}`,
+            body: body,
+            labels: ['mcp', 'breaking-change', 'automated', 'priority']
+          });
+    
+    - name: Create issue for new MCP release
+      if: steps.check_mcp_releases.outputs.new_release == 'true'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const release = JSON.parse(fs.readFileSync('mcp_latest_release.json', 'utf8'));
+          
+          let body = '## 🎉 New MCP Protocol Release\n\n';
+          body += `**Version:** ${release.tag}\n`;
+          body += `**Published:** ${release.published_at.split('T')[0]}\n`;
+          body += `**URL:** ${release.url}\n\n`;
+          
+          body += '### Release Notes\n\n';
+          body += release.body.substring(0, 1000) + (release.body.length > 1000 ? '...\n\n[Read more](' + release.url + ')' : '');
+          
+          body += '\n\n### Action Items\n';
+          body += '- [ ] Review new features and changes\n';
+          body += '- [ ] Test compatibility\n';
+          body += '- [ ] Consider adopting new features\n';
+          body += '- [ ] Update documentation with new capabilities\n';
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `[AUTO] New MCP Protocol Release: ${release.tag}`,
+            body: body,
+            labels: ['mcp', 'enhancement', 'automated']
+          });
+    
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mcp-check-results
+        path: |
+          mcp_spec_commits.json
+          mcp_latest_release.json
+          fastmcp_commits.json
+          mcp_ecosystem.json
+          breaking_changes.json
