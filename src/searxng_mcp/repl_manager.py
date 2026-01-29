@@ -19,7 +19,11 @@ from typing import Any
 
 try:
     from RestrictedPython import compile_restricted_exec  # type: ignore[import-not-found]
-    from RestrictedPython.Guards import guarded_iter_unpack_sequence, safe_builtins, safer_getattr  # type: ignore[import-not-found]
+    from RestrictedPython.Guards import (  # type: ignore[import-not-found]
+        guarded_iter_unpack_sequence,
+        safe_builtins,
+        safer_getattr,
+    )
 
     RESTRICTED_PYTHON_AVAILABLE = True
 except ImportError:

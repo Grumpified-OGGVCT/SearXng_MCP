@@ -8,7 +8,16 @@ __version__ = "0.1.0"
 __author__ = "Grumpified OGGVCT"
 __license__ = "MIT"
 
-from searxng_mcp.server import get_instances, list_categories, main, mcp, search
+
+# Lazy imports to avoid dependency issues during installation
+def __getattr__(name):
+    """Lazy import of server functions to avoid requiring dependencies at import time."""
+    if name in ("main", "mcp", "search", "list_categories", "get_instances"):
+        from searxng_mcp import server
+
+        return getattr(server, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "main",
