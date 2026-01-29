@@ -11,7 +11,7 @@ using Gemini Flash models via multiple providers:
 import json
 import logging
 import os
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 try:
     import httpx
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class AIEnhancer:
     """
     AI-powered search result enhancement using Gemini Flash models.
-    
+
     Supports multiple providers, all using Gemini Flash for optimal performance:
     - OpenRouter: google/gemini-2.0-flash-exp
     - Ollama Cloud: gemini-3-flash-preview:cloud
@@ -52,12 +52,12 @@ class AIEnhancer:
 
         # Provider configurations
         self.config = self._get_provider_config()
-        
+
         # Initialize rate limiter
         self.rate_limiter = RateLimiter()
         logger.info(f"AI enhancer initialized with provider: {self.provider}, model: {self.model}")
 
-    def _get_provider_config(self) -> Dict[str, Any]:
+    def _get_provider_config(self) -> dict[str, Any]:
         """Get provider-specific configuration."""
         configs = {
             "openrouter": {
@@ -86,30 +86,30 @@ class AIEnhancer:
         }
 
         return configs.get(self.provider, {})
-    
+
     def _get_latest_gemini_flash_model(self) -> str:
         """
         Auto-detect the latest Gemini Flash model.
-        
+
         Returns the latest available Flash model or falls back to known default.
         Checks Google's model list API for the newest gemini-*-flash model.
         """
         default_model = "gemini-2.0-flash-exp"  # Fallback model (Jan 2026)
-        
+
         if not self.api_key or httpx is None:
             return default_model
-            
+
         try:
             # Try to fetch available models from Google API
             with httpx.Client(timeout=10.0) as client:
                 response = client.get(
                     f"https://generativelanguage.googleapis.com/v1beta/models?key={self.api_key}"
                 )
-                
+
                 if response.status_code == 200:
                     data = response.json()
                     models = data.get("models", [])
-                    
+
                     # Find all flash models and sort by version
                     flash_models = []
                     for model in models:
@@ -122,7 +122,7 @@ class AIEnhancer:
                                 flash_models.insert(0, model_id)
                             else:
                                 flash_models.append(model_id)
-                    
+
                     # Return the first (most recent) flash model found
                     if flash_models:
                         return flash_models[0]
@@ -132,12 +132,12 @@ class AIEnhancer:
                         f"Gemini model detection failed with status {response.status_code}, "
                         f"using fallback model {default_model}"
                     )
-                        
-        except Exception as e:
+
+        except Exception:
             # Log but don't fail - just use default
             # Don't log exception details to avoid exposing API key
             logger.debug(f"Could not auto-detect Gemini model, using fallback: {default_model}")
-            
+
         return default_model
 
     def is_enabled(self) -> bool:
@@ -145,8 +145,8 @@ class AIEnhancer:
         return self.enabled and httpx is not None
 
     async def enhance_results(
-        self, query: str, results: List[Dict], max_results: int = 10
-    ) -> Dict[str, Any]:
+        self, query: str, results: list[dict], max_results: int = 10
+    ) -> dict[str, Any]:
         """
         Enhance search results with AI-powered summarization and insights.
 
@@ -190,18 +190,18 @@ class AIEnhancer:
                 "original_results": results,
             }
 
-    def _prepare_context(self, query: str, results: List[Dict]) -> str:
+    def _prepare_context(self, query: str, results: list[dict]) -> str:
         """Prepare context from search results for AI processing."""
         from datetime import datetime
-        
+
         # Get current date and time for context
         current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
-        
+
         context_parts = [
             f"Current Date and Time: {current_datetime}\n",
-            f"Note: Use this current date for any time-sensitive analysis, not your training cutoff date.\n\n",
+            "Note: Use this current date for any time-sensitive analysis, not your training cutoff date.\n\n",
             f"Search Query: {query}\n\n",
-            f"Search Results ({len(results)} sources):\n"
+            f"Search Results ({len(results)} sources):\n",
         ]
 
         for i, result in enumerate(results, 1):
@@ -219,9 +219,7 @@ class AIEnhancer:
 
         return "".join(context_parts)
 
-    async def _generate_enhancement(
-        self, query: str, context: str
-    ) -> Dict[str, Any]:
+    async def _generate_enhancement(self, query: str, context: str) -> dict[str, Any]:
         """Generate AI enhancement using configured provider."""
         system_prompt = """You are an expert research analyst with access to current web search results.
 
@@ -243,7 +241,7 @@ Format your response as JSON with these keys:
 - insights: Array of 5-7 detailed key insights with specifics
 - sources: Array of top 3-5 source recommendations, each with:
   - title: Source title
-  - url: Source URL  
+  - url: Source URL
   - reason: Detailed explanation (2-3 sentences) of why this source is valuable
 
 Be thorough, accurate, and comprehensive. Quality over brevity."""
@@ -259,15 +257,13 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
         else:
             raise ValueError(f"Unsupported provider: {self.provider}")
 
-    async def _call_openrouter(
-        self, system_prompt: str, user_prompt: str
-    ) -> Dict[str, Any]:
+    async def _call_openrouter(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call OpenRouter API with rate limiting."""
         # Check rate limit
         allowed = await self.rate_limiter.wait_if_needed(self.provider)
         if not allowed:
             raise Exception(f"Rate limit exceeded for {self.provider}")
-        
+
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -294,15 +290,13 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
                 raise Exception(f"Rate limit exceeded by provider: {self.provider}")
             raise
 
-    async def _call_ollama(
-        self, system_prompt: str, user_prompt: str
-    ) -> Dict[str, Any]:
+    async def _call_ollama(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call Ollama Cloud API with rate limiting."""
         # Check rate limit
         allowed = await self.rate_limiter.wait_if_needed(self.provider)
         if not allowed:
             raise Exception(f"Rate limit exceeded for {self.provider}")
-        
+
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
@@ -330,15 +324,13 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
                 raise Exception(f"Rate limit exceeded by provider: {self.provider}")
             raise
 
-    async def _call_gemini(
-        self, system_prompt: str, user_prompt: str
-    ) -> Dict[str, Any]:
+    async def _call_gemini(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call Google Gemini API with rate limiting."""
         # Check rate limit
         allowed = await self.rate_limiter.wait_if_needed(self.provider)
         if not allowed:
             raise Exception(f"Rate limit exceeded for {self.provider}")
-        
+
         # Combine system and user prompts for Gemini
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
 
@@ -366,7 +358,7 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
                 raise Exception(f"Rate limit exceeded by provider: {self.provider}")
             raise
 
-    async def quick_summary(self, query: str, results: List[Dict]) -> str:
+    async def quick_summary(self, query: str, results: list[dict]) -> str:
         """
         Generate a quick one-paragraph summary of results.
 
@@ -402,7 +394,7 @@ Be thorough, accurate, and comprehensive. Quality over brevity."""
 
 
 # Global enhancer instance
-_enhancer: Optional[AIEnhancer] = None
+_enhancer: AIEnhancer | None = None
 
 
 def get_ai_enhancer() -> AIEnhancer:

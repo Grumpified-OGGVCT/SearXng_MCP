@@ -15,23 +15,24 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 import httpx
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 try:
     from searxng_mcp.ai_enhancer import get_ai_enhancer
+
     AI_AVAILABLE = True
 except ImportError:
     AI_AVAILABLE = False
 
 from searxng_mcp.context_manager import InfiniteContextManager
-from searxng_mcp.rtd_manager import RealTimeDataManager
 from searxng_mcp.repl_manager import get_repl_manager
+from searxng_mcp.rtd_manager import RealTimeDataManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,13 @@ async def periodic_health_check():
     while True:
         try:
             results = await manager.check_all_instances()
-            await broadcast_health_update({
-                "type": "health_update",
-                "data": results,
-                "timestamp": datetime.utcnow().isoformat()
-            })
+            await broadcast_health_update(
+                {
+                    "type": "health_update",
+                    "data": results,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
         except Exception as e:
             print(f"Health check error: {e}")
         await asyncio.sleep(30)  # Check every 30 seconds
@@ -81,7 +84,7 @@ app = FastAPI(
 )
 
 # Store WebSocket connections
-active_connections: List[WebSocket] = []
+active_connections: list[WebSocket] = []
 
 
 class InstanceHealth(BaseModel):
@@ -89,8 +92,8 @@ class InstanceHealth(BaseModel):
 
     instance: str
     status: str
-    response_time: Optional[float] = None
-    error: Optional[str] = None
+    response_time: float | None = None
+    error: str | None = None
     timestamp: str
 
 
@@ -98,8 +101,8 @@ class SearchRequest(BaseModel):
     """Search request model."""
 
     query: str
-    categories: Optional[str] = None
-    engines: Optional[str] = None
+    categories: str | None = None
+    engines: str | None = None
     language: str = "en"
 
 
@@ -113,10 +116,10 @@ class ChatMessage(BaseModel):
 
 class REPLExecutionRequest(BaseModel):
     """REPL code execution request model."""
-    
+
     code: str = Field(..., min_length=1, max_length=10000)
     description: str = Field(default="", max_length=500)
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 class ChatSession:
@@ -124,38 +127,39 @@ class ChatSession:
 
     def __init__(self, session_id: str):
         self.session_id = session_id
-        self.messages: List[Dict[str, Any]] = []
-        self.goals: List[Dict[str, Any]] = []
-        self.user_model: Dict[str, int] = {
+        self.messages: list[dict[str, Any]] = []
+        self.goals: list[dict[str, Any]] = []
+        self.user_model: dict[str, int] = {
             "Technical Knowledge": 50,
             "Research Interest": 50,
             "Detail Preference": 50,
         }
         self.created_at = datetime.utcnow()
         self.last_activity = datetime.utcnow()
-        
+
         # Initialize infinite context manager (legacy)
         self.context_manager = InfiniteContextManager(
-            recent_messages_limit=10,
-            compression_threshold=15
+            recent_messages_limit=10, compression_threshold=15
         )
-        
+
         # Initialize RLM REPL manager (revolutionary!)
         self.repl_manager = get_repl_manager()
 
-    def add_message(self, role: str, content: str, metadata: Optional[Dict] = None):
+    def add_message(self, role: str, content: str, metadata: dict | None = None):
         """Add a message to the session history."""
-        self.messages.append({
-            "role": role,
-            "content": content,
-            "timestamp": datetime.utcnow().isoformat(),
-            "metadata": metadata or {}
-        })
-        
+        self.messages.append(
+            {
+                "role": role,
+                "content": content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "metadata": metadata or {},
+            }
+        )
+
         # Add to both context managers
         self.context_manager.add_message(role, content, metadata)
         self.repl_manager.add_message(role, content, metadata)
-        
+
         # Keep only last MAX_MESSAGES_PER_SESSION messages
         if len(self.messages) > 100:  # Using hardcoded value for now
             self.messages = self.messages[-100:]
@@ -169,14 +173,16 @@ class ChatSession:
                 goal["updated"] = datetime.utcnow().isoformat()
                 return
 
-        self.goals.append({
-            "id": str(uuid.uuid4()),
-            "text": goal_text,
-            "confidence": confidence,
-            "status": "in-progress",
-            "created": datetime.utcnow().isoformat(),
-            "updated": datetime.utcnow().isoformat()
-        })
+        self.goals.append(
+            {
+                "id": str(uuid.uuid4()),
+                "text": goal_text,
+                "confidence": confidence,
+                "status": "in-progress",
+                "created": datetime.utcnow().isoformat(),
+                "updated": datetime.utcnow().isoformat(),
+            }
+        )
 
     def update_user_model(self, key: str, value: int):
         """Update user model attribute."""
@@ -188,12 +194,12 @@ class ChatSession:
         # Use infinite context manager for optimized context
         context = self.context_manager.get_context(max_tokens=2000)
         return self.context_manager.format_for_model(context)
-    
-    def get_context_stats(self) -> Dict[str, Any]:
+
+    def get_context_stats(self) -> dict[str, Any]:
         """Get context management statistics."""
         return {
-            'legacy_context': self.context_manager.get_stats(),
-            'repl_stats': self.repl_manager.get_stats()
+            "legacy_context": self.context_manager.get_stats(),
+            "repl_stats": self.repl_manager.get_stats(),
         }
 
 
@@ -209,12 +215,12 @@ class DashboardManager:
 
     def __init__(self):
         self.load_config()
-        self.health_history: List[Dict] = []
+        self.health_history: list[dict] = []
         self.search_stats = {"total_searches": 0, "successful_searches": 0, "failed_searches": 0}
-        self.chat_sessions: Dict[str, ChatSession] = {}
+        self.chat_sessions: dict[str, ChatSession] = {}
         self.ai_enhancer = get_ai_enhancer() if AI_AVAILABLE else None
         self._cleanup_task = None  # Will be started by lifespan
-        
+
         # Initialize RTD manager
         self.rtd_manager = RealTimeDataManager()
 
@@ -255,7 +261,7 @@ class DashboardManager:
         except ValueError:
             self.local_timeout = 15.0
 
-    async def check_instance(self, instance: str, timeout: float) -> Dict:
+    async def check_instance(self, instance: str, timeout: float) -> dict:
         """Check health of a single instance."""
         result = {
             "instance": instance,
@@ -295,7 +301,7 @@ class DashboardManager:
 
         return result
 
-    async def check_all_instances(self) -> List[Dict]:
+    async def check_all_instances(self) -> list[dict]:
         """Check health of all instances."""
         tasks = []
 
@@ -308,22 +314,19 @@ class DashboardManager:
         results = await asyncio.gather(*tasks)
 
         # Store in history (keep last 100)
-        self.health_history.append({
-            "timestamp": datetime.utcnow().isoformat(),
-            "results": results
-        })
+        self.health_history.append({"timestamp": datetime.utcnow().isoformat(), "results": results})
         if len(self.health_history) > 100:
             self.health_history.pop(0)
 
         return list(results)
 
-    async def search_instance(self, instance: str, query: str, **params) -> Dict:
+    async def search_instance(self, instance: str, query: str, **params) -> dict:
         """Perform search on instance."""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 search_params = {"q": query, "format": "json", **params}
                 response = await client.get(f"{instance}/search", params=search_params)
-                
+
                 if response.status_code == 200:
                     self.search_stats["successful_searches"] += 1
                     return {"status": "success", "data": response.json()}
@@ -336,7 +339,7 @@ class DashboardManager:
         finally:
             self.search_stats["total_searches"] += 1
 
-    def get_or_create_session(self, session_id: Optional[str] = None) -> ChatSession:
+    def get_or_create_session(self, session_id: str | None = None) -> ChatSession:
         """Get or create a chat session."""
         if session_id and session_id in self.chat_sessions:
             return self.chat_sessions[session_id]
@@ -344,8 +347,9 @@ class DashboardManager:
         # Enforce max sessions limit
         if len(self.chat_sessions) >= self.MAX_SESSIONS:
             # Remove oldest inactive session
-            oldest_id = min(self.chat_sessions.keys(), 
-                          key=lambda k: self.chat_sessions[k].last_activity)
+            oldest_id = min(
+                self.chat_sessions.keys(), key=lambda k: self.chat_sessions[k].last_activity
+            )
             del self.chat_sessions[oldest_id]
             logger.info(f"Removed oldest session {oldest_id} due to max limit")
 
@@ -361,22 +365,24 @@ class DashboardManager:
                 await asyncio.sleep(300)  # Check every 5 minutes
                 now = datetime.utcnow()
                 to_remove = []
-                
+
                 for session_id, session in self.chat_sessions.items():
                     age = (now - session.last_activity).total_seconds()
                     if age > self.SESSION_TIMEOUT_SECONDS:
                         to_remove.append(session_id)
-                
+
                 for session_id in to_remove:
                     del self.chat_sessions[session_id]
                     logger.info(f"Cleaned up inactive session: {session_id}")
-                    
+
                 if to_remove:
                     logger.info(f"Cleaned up {len(to_remove)} inactive sessions")
             except Exception as e:
                 logger.error(f"Session cleanup error: {e}")
 
-    async def process_chat_message(self, session: ChatSession, message: str, language: str = "en", category: str = "general") -> Dict[str, Any]:
+    async def process_chat_message(
+        self, session: ChatSession, message: str, language: str = "en", category: str = "general"
+    ) -> dict[str, Any]:
         """Process a chat message with search and AI enhancement."""
         response = {
             "thinking": None,
@@ -386,13 +392,13 @@ class DashboardManager:
             "goals": session.goals,
             "user_model": session.user_model,
             "context_stats": None,
-            "rtd_status": None
+            "rtd_status": None,
         }
 
         try:
             # Add user message to history
             session.add_message("user", message)
-            
+
             # Get context stats
             response["context_stats"] = session.get_context_stats()
 
@@ -401,36 +407,35 @@ class DashboardManager:
 
             # Perform search
             response["thinking"] = "Searching for relevant information..."
-            
+
             search_result = None
             for instance in self.instances:
                 result = await self.search_instance(
-                    instance,
-                    message,
-                    language=language,
-                    categories=category
+                    instance, message, language=language, categories=category
                 )
                 if result["status"] == "success":
                     search_result = result["data"]
                     break
 
             if not search_result:
-                response["response"] = "I couldn't find any search results. Please try rephrasing your question."
+                response["response"] = (
+                    "I couldn't find any search results. Please try rephrasing your question."
+                )
                 session.add_message("assistant", response["response"])
                 return response
 
             # Extract results
             results = search_result.get("results", [])
-            
+
             # Calculate RTD status and freshness for results
             rtd_status = self.rtd_manager.get_rtd_status(message, results, category)
             response["rtd_status"] = rtd_status
-            
+
             # Add freshness info to each result
             for i, result in enumerate(results):
                 freshness = self.rtd_manager.calculate_freshness(result)
                 result["freshness"] = freshness
-            
+
             response["search_results"] = results[:10]
 
             # Update goals
@@ -440,10 +445,10 @@ class DashboardManager:
             # AI Enhancement if available
             if self.ai_enhancer and self.ai_enhancer.is_enabled():
                 response["thinking"] = "Analyzing search results with AI..."
-                
+
                 try:
                     enhancement = await self.ai_enhancer.enhance_results(message, results)
-                    
+
                     if enhancement.get("enhanced"):
                         ai_summary = enhancement.get("ai_summary", "")
                         insights = enhancement.get("key_insights", [])
@@ -451,7 +456,7 @@ class DashboardManager:
 
                         # Build comprehensive response
                         response_text = f"{ai_summary}\n\n"
-                        
+
                         if insights:
                             response_text += "**Key Insights:**\n"
                             for i, insight in enumerate(insights[:5], 1):
@@ -469,10 +474,16 @@ class DashboardManager:
 
                         # Update user model based on query complexity
                         if len(message.split()) > 10:
-                            session.update_user_model("Technical Knowledge", 
-                                session.user_model["Technical Knowledge"] + self.USER_MODEL_INCREMENT_LONG_QUERY)
-                        session.update_user_model("Research Interest", 
-                            session.user_model["Research Interest"] + self.USER_MODEL_INCREMENT_RESEARCH)
+                            session.update_user_model(
+                                "Technical Knowledge",
+                                session.user_model["Technical Knowledge"]
+                                + self.USER_MODEL_INCREMENT_LONG_QUERY,
+                            )
+                        session.update_user_model(
+                            "Research Interest",
+                            session.user_model["Research Interest"]
+                            + self.USER_MODEL_INCREMENT_RESEARCH,
+                        )
 
                         # Complete goals
                         session.update_goal("Analyzing information", 100)
@@ -500,14 +511,14 @@ class DashboardManager:
         response["user_model"] = session.user_model
         return response
 
-    def _create_basic_summary(self, query: str, results: List[Dict]) -> str:
+    def _create_basic_summary(self, query: str, results: list[dict]) -> str:
         """Create a basic summary when AI is not available."""
         if not results:
             return "I couldn't find any results for your query."
 
         summary = f"I found {len(results)} results for your query.\n\n"
         summary += "**Top Results:**\n"
-        
+
         for i, result in enumerate(results[:5], 1):
             title = result.get("title", "No title")
             url = result.get("url", "")
@@ -524,7 +535,7 @@ manager = DashboardManager()
 
 
 # WebSocket connection manager
-async def broadcast_health_update(data: Dict):
+async def broadcast_health_update(data: dict):
     """Broadcast health update to all connected clients."""
     message = json.dumps(data)
     for connection in active_connections:
@@ -577,14 +588,11 @@ async def get_stats():
 @app.get("/api/context/stats")
 async def get_context_stats():
     """Get context management statistics for all active sessions."""
-    stats = {
-        "total_sessions": len(manager.chat_sessions),
-        "sessions": {}
-    }
-    
+    stats = {"total_sessions": len(manager.chat_sessions), "sessions": {}}
+
     for session_id, session in manager.chat_sessions.items():
         stats["sessions"][session_id] = session.get_context_stats()
-    
+
     return stats
 
 
@@ -598,16 +606,16 @@ async def get_rtd_status():
             "fresh": "< 1 hour",
             "recent": "< 1 day",
             "stale": "< 1 week",
-            "old": "> 1 week"
+            "old": "> 1 week",
         },
         "refresh_intervals": {
             "live": "30 seconds",
             "dynamic": "5 minutes",
             "regular": "15 minutes",
-            "static": "1 hour"
+            "static": "1 hour",
         },
         "time_sensitive_keywords": manager.rtd_manager.TIME_SENSITIVE_KEYWORDS[:10],
-        "high_freshness_categories": manager.rtd_manager.HIGH_FRESHNESS_CATEGORIES
+        "high_freshness_categories": manager.rtd_manager.HIGH_FRESHNESS_CATEGORIES,
     }
 
 
@@ -624,7 +632,7 @@ async def test_search(request: SearchRequest):
         )
         if result["status"] == "success":
             return result
-    
+
     return {"status": "error", "error": "All instances failed"}
 
 
@@ -633,10 +641,7 @@ async def chat_endpoint(message: ChatMessage):
     """Process a chat message via REST API."""
     session = manager.get_or_create_session()
     result = await manager.process_chat_message(
-        session,
-        message.message,
-        message.language,
-        message.category
+        session, message.message, message.language, message.category
     )
     return result
 
@@ -645,7 +650,7 @@ async def chat_endpoint(message: ChatMessage):
 async def repl_execute_endpoint(request: REPLExecutionRequest):
     """
     Execute code in REPL environment.
-    
+
     This is the revolutionary RLM REPL system that enables:
     - LLM-generated code for context navigation
     - Recursive sub-LLM calls
@@ -653,23 +658,13 @@ async def repl_execute_endpoint(request: REPLExecutionRequest):
     - Zero information loss with infinite context
     """
     session = manager.get_or_create_session(request.session_id)
-    
+
     try:
-        result = session.repl_manager.execute_code(
-            request.code,
-            request.description
-        )
-        return {
-            "status": "success",
-            "result": result
-        }
+        result = session.repl_manager.execute_code(request.code, request.description)
+        return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"REPL execution error: {e}", exc_info=True)
-        return {
-            "status": "error",
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
+        return {"status": "error", "error": str(e), "error_type": type(e).__name__}
 
 
 @app.get("/api/repl/context/{session_id}")
@@ -678,11 +673,8 @@ async def repl_get_context(session_id: str):
     session = manager.chat_sessions.get(session_id)
     if not session:
         return {"status": "error", "error": "Session not found"}
-    
-    return {
-        "status": "success",
-        "context": session.repl_manager.get_context()
-    }
+
+    return {"status": "success", "context": session.repl_manager.get_context()}
 
 
 @app.get("/api/repl/stats/{session_id}")
@@ -691,11 +683,8 @@ async def repl_get_stats(session_id: str):
     session = manager.chat_sessions.get(session_id)
     if not session:
         return {"status": "error", "error": "Session not found"}
-    
-    return {
-        "status": "success",
-        "stats": session.repl_manager.get_stats()
-    }
+
+    return {"status": "success", "stats": session.repl_manager.get_stats()}
 
 
 @app.post("/api/repl/generate-code")
@@ -706,21 +695,14 @@ async def repl_generate_code(request: dict):
     """
     session_id = request.get("session_id")
     query = request.get("query", "")
-    
+
     session = manager.get_or_create_session(session_id)
-    
+
     try:
         code = session.repl_manager.generate_navigation_code(query)
-        return {
-            "status": "success",
-            "code": code,
-            "description": f"Generated code for: {query}"
-        }
+        return {"status": "success", "code": code, "description": f"Generated code for: {query}"}
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        return {"status": "error", "error": str(e)}
 
 
 @app.websocket("/ws/chat")
@@ -729,111 +711,88 @@ async def chat_websocket(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())
     session = manager.get_or_create_session(session_id)
-    
+
     try:
         # Send welcome message
-        await websocket.send_json({
-            "type": "connected",
-            "session_id": session_id
-        })
-        
+        await websocket.send_json({"type": "connected", "session_id": session_id})
+
         while True:
             data = await websocket.receive_json()
             message_type = data.get("type")
-            
+
             if message_type == "chat":
                 message = data.get("message", "")
                 language = data.get("language", "en")
                 category = data.get("category", "general")
-                
+
                 # Send thinking status
-                await websocket.send_json({
-                    "type": "thinking",
-                    "content": "Processing your query..."
-                })
-                
+                await websocket.send_json(
+                    {"type": "thinking", "content": "Processing your query..."}
+                )
+
                 # Send monologue update
-                await websocket.send_json({
-                    "type": "monologue",
-                    "content": f"Analyzing query: '{message}'"
-                })
-                
+                await websocket.send_json(
+                    {"type": "monologue", "content": f"Analyzing query: '{message}'"}
+                )
+
                 # Process message
                 result = await manager.process_chat_message(session, message, language, category)
-                
+
                 # Send thinking update
                 if result.get("thinking"):
-                    await websocket.send_json({
-                        "type": "thinking",
-                        "content": result["thinking"]
-                    })
-                    await websocket.send_json({
-                        "type": "monologue",
-                        "content": result["thinking"]
-                    })
-                
+                    await websocket.send_json({"type": "thinking", "content": result["thinking"]})
+                    await websocket.send_json({"type": "monologue", "content": result["thinking"]})
+
                 # Send search results
                 if result.get("search_results"):
-                    await websocket.send_json({
-                        "type": "search_results",
-                        "content": result["search_results"]
-                    })
-                    await websocket.send_json({
-                        "type": "monologue",
-                        "content": f"Found {len(result['search_results'])} relevant sources"
-                    })
-                
+                    await websocket.send_json(
+                        {"type": "search_results", "content": result["search_results"]}
+                    )
+                    await websocket.send_json(
+                        {
+                            "type": "monologue",
+                            "content": f"Found {len(result['search_results'])} relevant sources",
+                        }
+                    )
+
                 # Send context stats
                 if result.get("context_stats"):
-                    await websocket.send_json({
-                        "type": "context_stats",
-                        "content": result["context_stats"]
-                    })
-                
+                    await websocket.send_json(
+                        {"type": "context_stats", "content": result["context_stats"]}
+                    )
+
                 # Send RTD status
                 if result.get("rtd_status"):
-                    await websocket.send_json({
-                        "type": "rtd_status",
-                        "content": result["rtd_status"]
-                    })
-                
+                    await websocket.send_json(
+                        {"type": "rtd_status", "content": result["rtd_status"]}
+                    )
+
                 # Send goals update
                 if result.get("goals"):
-                    await websocket.send_json({
-                        "type": "goal_update",
-                        "content": result["goals"]
-                    })
-                
+                    await websocket.send_json({"type": "goal_update", "content": result["goals"]})
+
                 # Send user model update
                 if result.get("user_model"):
-                    await websocket.send_json({
-                        "type": "user_model_update",
-                        "content": result["user_model"]
-                    })
-                
+                    await websocket.send_json(
+                        {"type": "user_model_update", "content": result["user_model"]}
+                    )
+
                 # Send final response
                 if result.get("response"):
-                    await websocket.send_json({
-                        "type": "response",
-                        "content": result["response"]
-                    })
-                    await websocket.send_json({
-                        "type": "monologue",
-                        "content": "Response generated successfully"
-                    })
-                
+                    await websocket.send_json({"type": "response", "content": result["response"]})
+                    await websocket.send_json(
+                        {"type": "monologue", "content": "Response generated successfully"}
+                    )
+
             elif message_type == "ping":
                 await websocket.send_json({"type": "pong"})
-                
+
     except WebSocketDisconnect:
         logger.info(f"Chat session {session_id} disconnected")
     except Exception as e:
         logger.error(f"Chat WebSocket error: {e}", exc_info=True)
         try:
-            await websocket.send_json({
-                "type": "error",
-                "content": f"Server error: {str(e)}"
-            })
+            await websocket.send_json({"type": "error", "content": f"Server error: {str(e)}"})
         except Exception as send_error:
             logger.error(f"Failed to send error to client: {send_error}")
 
@@ -843,16 +802,20 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
     await websocket.accept()
     active_connections.append(websocket)
-    
+
     try:
         # Send initial data
         results = await manager.check_all_instances()
-        await websocket.send_text(json.dumps({
-            "type": "health_update",
-            "data": results,
-            "timestamp": datetime.utcnow().isoformat()
-        }))
-        
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "health_update",
+                    "data": results,
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
+        )
+
         # Keep connection alive
         while True:
             data = await websocket.receive_text()
@@ -871,10 +834,10 @@ except RuntimeError:
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     print("🚀 Starting SearXNG MCP Dashboard...")
     print("📊 Dashboard: http://localhost:8765")
     print("📚 API Docs: http://localhost:8765/docs")
     print()
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")

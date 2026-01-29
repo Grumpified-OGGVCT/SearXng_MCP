@@ -6,12 +6,10 @@ Tests configured instances and displays health status, response times, and diagn
 """
 
 import asyncio
-import json
 import os
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 try:
     import httpx
@@ -33,11 +31,7 @@ class Colors:
     @staticmethod
     def is_supported() -> bool:
         """Check if terminal supports colors."""
-        return (
-            hasattr(sys.stdout, "isatty")
-            and sys.stdout.isatty()
-            and os.getenv("TERM") != "dumb"
-        )
+        return hasattr(sys.stdout, "isatty") and sys.stdout.isatty() and os.getenv("TERM") != "dumb"
 
 
 class HealthChecker:
@@ -89,15 +83,11 @@ class HealthChecker:
             self.timeout = 5.0
 
         try:
-            self.local_timeout = float(
-                os.environ.get("SEARXNG_LOCAL_TIMEOUT", "15.0")
-            )
+            self.local_timeout = float(os.environ.get("SEARXNG_LOCAL_TIMEOUT", "15.0"))
         except ValueError:
             self.local_timeout = 15.0
 
-    async def check_instance(
-        self, instance: str, timeout: float
-    ) -> Dict[str, any]:
+    async def check_instance(self, instance: str, timeout: float) -> dict[str, any]:
         """Check health of a single instance."""
         result = {
             "instance": instance,
@@ -145,7 +135,7 @@ class HealthChecker:
 
         return result
 
-    async def check_all_instances(self) -> List[Dict]:
+    async def check_all_instances(self) -> list[dict]:
         """Check health of all configured instances."""
         tasks = []
 
@@ -164,13 +154,11 @@ class HealthChecker:
         """Print health check header."""
         print()
         print(self.color("=" * 80, Colors.CYAN))
-        print(
-            self.color("  SearXNG MCP Server - Health Check", Colors.BOLD + Colors.CYAN)
-        )
+        print(self.color("  SearXNG MCP Server - Health Check", Colors.BOLD + Colors.CYAN))
         print(self.color("=" * 80, Colors.CYAN))
         print()
 
-    def print_summary(self, results: List[Dict]):
+    def print_summary(self, results: list[dict]):
         """Print summary of health check results."""
         healthy = sum(1 for r in results if r["status"] == "healthy")
         total = len(results)
@@ -184,24 +172,18 @@ class HealthChecker:
 
         if healthy == 0:
             print()
-            print(
-                self.color(
-                    "⚠ WARNING: No healthy instances found!", Colors.YELLOW + Colors.BOLD
-                )
-            )
+            print(self.color("⚠ WARNING: No healthy instances found!", Colors.YELLOW + Colors.BOLD))
             print("  - Check your network connection")
             print("  - Verify instance URLs in .env file")
             print("  - Try different instances from https://searx.space")
 
         elif healthy < total:
             print()
-            print(
-                self.color("⚠ Some instances are unavailable", Colors.YELLOW)
-            )
+            print(self.color("⚠ Some instances are unavailable", Colors.YELLOW))
             print("  This is normal - public instances can be temporarily down")
             print("  The server will automatically use healthy instances")
 
-    def print_result(self, result: Dict):
+    def print_result(self, result: dict):
         """Print result for a single instance."""
         instance = result["instance"]
         status = result["status"]

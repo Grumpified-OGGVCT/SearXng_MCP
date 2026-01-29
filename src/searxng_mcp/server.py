@@ -302,7 +302,7 @@ async def search(
     manager = get_instance_manager()
     cache = get_cache()
     metrics = get_metrics()
-    
+
     start_time = time.time()
     cached_result = False
     ai_provider = None
@@ -310,7 +310,7 @@ async def search(
     search_success = True
     ai_success = True
     error_msg = None
-    
+
     try:
         # Check cache first (only for page 1 - pagination not cached)
         cached = None
@@ -324,7 +324,7 @@ async def search(
                 safesearch=safesearch,
                 ai_enhance=ai_enhance,
             )
-        
+
         if cached:
             logger.info(f"Cache hit for query: {query[:50]}...")
             cached_result = True
@@ -344,12 +344,12 @@ async def search(
                 safesearch=safesearch,
                 page=page,
             )
-            
+
             # Apply AI enhancement if requested
             if ai_enhance:
                 try:
                     from searxng_mcp.ai_enhancer import get_ai_enhancer
-                    
+
                     enhancer = get_ai_enhancer()
                     if enhancer.is_enabled():
                         ai_provider = enhancer.provider
@@ -374,7 +374,7 @@ async def search(
                         "error": str(e),
                         "message": "AI enhancement failed but search results are still available",
                     }
-            
+
             # Cache the result (only page 1)
             if page == 1:
                 cache.set(
@@ -387,9 +387,9 @@ async def search(
                     safesearch=safesearch,
                     ai_enhance=ai_enhance,
                 )
-        
+
         latency = time.time() - start_time
-        
+
         # Record metrics
         # Note: token_estimate is approximate - real usage varies by query/results
         metrics.record_search(
@@ -404,14 +404,14 @@ async def search(
             model=ai_model,
             token_estimate={"input": 2000, "output": 500} if (ai_enhance and ai_success) else None,
         )
-        
+
         return json.dumps(results, indent=2, ensure_ascii=False)
     except Exception as e:
         logger.exception(f"Search failed: {e}")
         error_msg = str(e)
         search_success = False
         latency = time.time() - start_time
-        
+
         # Record failure in metrics
         metrics.record_search(
             query=query,
@@ -424,7 +424,7 @@ async def search(
             provider=ai_provider,
             model=ai_model,
         )
-        
+
         return json.dumps({"error": error_msg}, indent=2)
 
 
@@ -470,7 +470,7 @@ async def get_instances() -> str:
 async def get_cache_stats() -> str:
     """
     Get cache statistics and performance metrics.
-    
+
     Returns cache hit/miss rates, size, and configuration.
     """
     cache = get_cache()
@@ -482,7 +482,7 @@ async def get_cache_stats() -> str:
 async def clear_cache() -> str:
     """
     Clear all cached search results.
-    
+
     Returns the number of entries cleared.
     """
     cache = get_cache()
@@ -494,7 +494,7 @@ async def clear_cache() -> str:
 async def get_session_stats() -> str:
     """
     Get current session metrics.
-    
+
     Returns request counts, latency, cost estimates, and provider statistics.
     """
     metrics_collector = get_metrics()
@@ -505,11 +505,11 @@ async def get_session_stats() -> str:
 def main() -> None:
     """Run the MCP server."""
     logger.info("Starting SearXNG MCP server...")
-    
+
     # Initialize systems
     get_cache()
     get_metrics()
-    
+
     # Run periodic cleanup
     async def periodic_cleanup():
         """Periodic cleanup task."""
@@ -521,20 +521,21 @@ def main() -> None:
                 logger.debug(f"Periodic cleanup: removed {cleaned} expired cache entries")
             except Exception as e:
                 logger.error(f"Periodic cleanup error: {e}")
-    
+
     # Start cleanup task in background
     try:
+
         def run_cleanup():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.create_task(periodic_cleanup())
             loop.run_forever()
-        
+
         cleanup_thread = threading.Thread(target=run_cleanup, daemon=True)
         cleanup_thread.start()
     except Exception as e:
         logger.warning(f"Could not start periodic cleanup: {e}")
-    
+
     mcp.run()
 
 
