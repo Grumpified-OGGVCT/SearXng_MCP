@@ -14,7 +14,7 @@ import os
 from typing import Any
 
 try:
-    import httpx
+    import httpx  # type: ignore[import-not-found]
 except ImportError:
     httpx = None
 
@@ -33,7 +33,7 @@ class AIEnhancer:
     - Google Gemini: Auto-detected latest Flash model
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize AI enhancer with configuration."""
         self.provider = os.environ.get("SEARXNG_AI_PROVIDER", "").lower()
         self.api_key = os.environ.get("SEARXNG_AI_API_KEY", "")

@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
-import httpx
-from fastmcp import FastMCP
-from pydantic import Field
+import httpx  # type: ignore[import-not-found]
+from fastmcp import FastMCP  # type: ignore[import-not-found]
+from pydantic import Field  # type: ignore[import-not-found]
 
 from searxng_mcp.cache import ResultCache
 from searxng_mcp.metrics import MetricsCollector

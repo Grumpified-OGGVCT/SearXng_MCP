@@ -18,8 +18,8 @@ from functools import wraps
 from typing import Any
 
 try:
-    from RestrictedPython import compile_restricted_exec
-    from RestrictedPython.Guards import guarded_iter_unpack_sequence, safe_builtins, safer_getattr
+    from RestrictedPython import compile_restricted_exec  # type: ignore[import-not-found]
+    from RestrictedPython.Guards import guarded_iter_unpack_sequence, safe_builtins, safer_getattr  # type: ignore[import-not-found]
 
     RESTRICTED_PYTHON_AVAILABLE = True
 except ImportError:
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 # Security decorators
-def timeout_limit(seconds: int):
+def timeout_limit(seconds: int) -> Any:
     """Decorator to limit execution time."""
 
     def decorator(func):
@@ -58,7 +58,7 @@ def timeout_limit(seconds: int):
     return decorator
 
 
-def memory_limit(max_items: int):
+def memory_limit(max_items: int) -> Any:
     """Decorator to limit memory usage in results."""
 
     def decorator(func):
@@ -148,7 +148,7 @@ class RLMREPLManager:
         # Safe function registry
         self._register_safe_functions()
 
-    def _register_safe_functions(self):
+    def _register_safe_functions(self) -> None:
         """Register whitelisted safe functions for REPL execution."""
         self.safe_functions = {
             # Navigation functions

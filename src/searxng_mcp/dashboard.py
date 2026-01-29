@@ -358,7 +358,7 @@ class DashboardManager:
         self.chat_sessions[new_id] = session
         return session
 
-    async def _cleanup_sessions(self):
+    async def _cleanup_sessions(self) -> None:
         """Background task to cleanup inactive sessions."""
         while True:
             try:
@@ -833,7 +833,7 @@ except RuntimeError:
 
 
 if __name__ == "__main__":
-    import uvicorn
+    import uvicorn  # type: ignore[import-not-found]
 
     print("🚀 Starting SearXNG MCP Dashboard...")
     print("📊 Dashboard: http://localhost:8765")
